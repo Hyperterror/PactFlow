@@ -3,59 +3,144 @@
 /*
  * PactFlow design tokens.
  *
- * The palette is intentionally light-first: the product is a review surface for
- * contracts and payments, so contrast and legibility win over decoration. The
- * dark sidebar (`.sidebar`) anchors navigation without darkening the content.
+ * Brand personality: professional, calm, trustworthy, precise, human.
+ * The system is light-first because the product is a review surface for
+ * contracts and money — contrast and legibility outrank decoration.
+ *
+ * Palette rule: deep forest is the only saturated brand colour. Brass appears
+ * only on editorial/premium moments. Red, amber and green are reserved for
+ * state and never used decoratively.
  */
 
 :root {
-  --background: #f5f6f8;
-  --surface: #ffffff;
-  --surface-muted: #eef1f5;
-  --surface-inverse: #0e1726;
-  --border: #e2e7ee;
-  --border-strong: #cdd5e0;
-  --foreground: #0f172a;
-  --muted: #5c6b7f;
-  --primary: #4338ca;
-  --primary-hover: #3730a3;
-  --primary-soft: #eef0fe;
-  --primary-foreground: #ffffff;
-  --success: #047857;
-  --success-soft: #e7f6ef;
-  --warning: #b45309;
-  --warning-soft: #fdf3e3;
-  --danger: #b91c1c;
-  --danger-soft: #fdeceb;
-  --info: #0369a1;
-  --info-soft: #e8f4fb;
-  --radius: 0.75rem;
+  color-scheme: light;
+
+  /* Canvas & surfaces — warm ivory, never cool grey */
+  --background: #f5f3ed;
+  --surface: #fbfaf6;
+  --surface-muted: #efece4;
+  --surface-sunken: #eae7de;
+  --surface-inverse: #193c35;
+
+  /* Lines — stone, not slate */
+  --border: #e0ded5;
+  --border-strong: #cecbbf;
+
+  /* Type */
+  --foreground: #27312e;
+  --muted: #5c6963;
+  --muted-soft: #7d8883;
+
+  /* Brand */
+  --primary: #193c35;
+  --primary-hover: #12302a;
+  --primary-soft: #e2eae3;
+  --primary-foreground: #f7f5ef;
+  --brass: #b58a5a;
+  --brass-strong: #9a7346;
+  --brass-soft: #f3ead9;
+  --sage: #dce6dd;
+
+  /* State — muted until it means something */
+  --success: #2c6b4a;
+  --success-soft: #e3efe6;
+  --success-foreground: #f5faf6;
+  --warning: #8f6420;
+  --warning-soft: #f7eedb;
+  --danger: #a1382c;
+  --danger-soft: #f8e6e2;
+  --danger-foreground: #fdf7f5;
+  --info: #3a5c6b;
+  --info-soft: #e4edf0;
+
+  /* Shape — precise rather than playful */
+  --radius: 0.625rem;
+  --radius-sm: 0.5rem;
+  --shadow-card: 0 1px 2px rgba(39, 49, 46, 0.05);
+  --shadow-raised: 0 4px 14px -6px rgba(39, 49, 46, 0.16);
+}
+
+/*
+ * Dark mode is an alternative, not the default. It is opt-in through
+ * `data-theme="dark"` on the root element rather than an automatic response to
+ * the OS preference, because the brief asks for light as the shipped default.
+ * The surfaces use charcoal warmed toward green instead of pure black, so the
+ * page still reads as paper rather than a void.
+ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: #1c2321;
+  --surface: #242c29;
+  --surface-muted: #2b3431;
+  --surface-sunken: #191f1d;
+  --surface-inverse: #15201d;
+
+  --border: #343f3b;
+  --border-strong: #46524d;
+
+  --foreground: #ece9e1;
+  --muted: #a2ada7;
+  --muted-soft: #8b968f;
+
+  --primary: #8cbfa9;
+  --primary-hover: #a3ceba;
+  --primary-soft: #24352f;
+  --primary-foreground: #12201c;
+  --brass: #c9a274;
+  --brass-strong: #d8b48a;
+  --brass-soft: #33291d;
+  --sage: #2b3b34;
+
+  --success: #7dbb95;
+  --success-soft: #22332a;
+  --success-foreground: #10231a;
+  --warning: #d9ac66;
+  --warning-soft: #332a1b;
+  --danger: #dd8b7c;
+  --danger-soft: #3a2320;
+  --danger-foreground: #2a1210;
+  --info: #90b6c4;
+  --info-soft: #223037;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 4px 16px -6px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
   --color-surface-inverse: var(--surface-inverse);
   --color-border-base: var(--border);
   --color-border-strong: var(--border-strong);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-muted-soft: var(--muted-soft);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-foreground: var(--primary-foreground);
+  --color-brass: var(--brass);
+  --color-brass-strong: var(--brass-strong);
+  --color-brass-soft: var(--brass-soft);
+  --color-sage: var(--sage);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-foreground: var(--danger-foreground);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius-card: var(--radius);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
 }
 
 body {
@@ -63,6 +148,13 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Money and durations must line up in columns. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 ::selection {
@@ -74,6 +166,29 @@ body {
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/*
+ * Touch polish: kill the grey flash on tap and remove the 300ms double-tap
+ * zoom delay. Scroll-chaining stays untouched so pull-to-refresh keeps working.
+ */
+:where(a, button, [role="button"], input, select, textarea, summary, label) {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/*
+ * Touch targets. On a coarse pointer the 28-36px controls that suit a mouse
+ * fall below the 44px comfortable-tap floor, so they grow only there.
+ */
+@media (pointer: coarse) {
+  :where(a, button, [role="button"], summary) {
+    min-height: 44px;
+  }
+
+  :where(nav a, nav button) {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -100,4 +215,38 @@ body {
   animation: pactflow-pulse 1.5s ease-in-out infinite;
   background: var(--surface-muted);
   border-radius: 0.5rem;
+}
+
+/* Only one theme icon is in the DOM paint at a time; CSS decides which. */
+.theme-icon-moon {
+  display: none;
+}
+
+[data-theme="dark"] .theme-icon-sun {
+  display: none;
+}
+
+[data-theme="dark"] .theme-icon-moon {
+  display: block;
+}
+
+/*
+ * Pillar treatments. One brand system, three accents that are heard as a
+ * change of tone rather than a change of colour.
+ */
+
+/* Agreement — editorial: a brass rule and generous leading. */
+.pillar-agreement {
+  border-top: 2px solid var(--brass);
+}
+
+/* Delivery — secure: a soft sage wash behind the header block. */
+.pillar-delivery {
+  background-image: linear-gradient(to bottom, var(--primary-soft), transparent 96px);
+}
+
+/* Relationship — human: a warmer stone wash and softer corners. */
+.pillar-relationship {
+  background-image: linear-gradient(to bottom, var(--surface-muted), transparent 120px);
+  border-color: var(--border);
 }

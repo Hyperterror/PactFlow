@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { PactWordmark } from "@/components/pact-mark";
 
 /**
  * Auth shell. The brand rail is hidden on small screens so the form keeps the
@@ -8,24 +9,21 @@ import Link from "next/link";
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_460px]">
-      <aside className="hidden flex-col justify-between bg-surface-inverse px-10 py-12 text-white lg:flex">
-        <Link href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            P
-          </span>
-          PactFlow
+      <aside className="hidden flex-col justify-between bg-surface-inverse px-10 py-12 text-primary-foreground lg:flex">
+        <Link href="/" aria-label="PactFlow home">
+          <PactWordmark tileClassName="bg-[#f2efe6] text-[#193c35]" />
         </Link>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/50">Why it exists</p>
-          <p className="mt-4 max-w-sm text-2xl font-medium leading-snug">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brass">Why it exists</p>
+          <p className="mt-4 max-w-sm text-2xl font-medium leading-snug tracking-[-0.01em]">
             Scope creep, unpaid invoices and &ldquo;I thought that was included&rdquo; all come from the same gap: nobody
             wrote the boundary down.
           </p>
-          <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/60">
+          <p className="mt-4 max-w-sm text-sm leading-relaxed text-primary-foreground/60">
             PactFlow writes it down, versions it, and refuses to release the file until the money has moved.
           </p>
         </div>
-        <p className="text-xs text-white/40">
+        <p className="max-w-sm border-t border-primary-foreground/15 pt-4 text-xs leading-relaxed text-primary-foreground/45">
           AI prepares and recommends. You approve. The backend enforces every step.
         </p>
       </aside>

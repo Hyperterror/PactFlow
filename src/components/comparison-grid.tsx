@@ -44,22 +44,22 @@ export interface ComparisonGridColumn {
 // registering the aggregate module once is enough.
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-/** Matches the slate/indigo palette defined in `globals.css`. */
+/** Mirrors the ivory/forest tokens in `globals.css`. */
 const pactflowTheme = themeQuartz.withParams({
-  accentColor: "#4338ca",
-  backgroundColor: "#ffffff",
-  borderColor: "#e2e7ee",
-  chromeBackgroundColor: "#eef1f5",
-  foregroundColor: "#0f172a",
-  headerBackgroundColor: "#eef1f5",
-  headerTextColor: "#5c6b7f",
+  accentColor: "#193c35",
+  backgroundColor: "#fbfaf6",
+  borderColor: "#e0ded5",
+  chromeBackgroundColor: "#efece4",
+  foregroundColor: "#27312e",
+  headerBackgroundColor: "#efece4",
+  headerTextColor: "#5c6963",
   headerFontWeight: 600,
   headerFontSize: 11,
-  oddRowBackgroundColor: "#fafbfc",
-  rowHoverColor: "#eef0fe",
+  oddRowBackgroundColor: "#f8f6f0",
+  rowHoverColor: "#e2eae3",
   fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
   fontSize: 13,
-  wrapperBorderRadius: "0.75rem",
+  wrapperBorderRadius: "0.625rem",
   cellHorizontalPadding: 16,
   rowHeight: 40,
   headerHeight: 44,
@@ -99,7 +99,7 @@ export function ComparisonGrid({
       cellStyle: emphasisStyle,
       valueGetter: (params) => params.data?.cells[column.quotationId] ?? "—",
       // Line items are money or durations; both read better right-aligned.
-      cellClass: "text-right tabular-nums",
+      cellClass: "tabular text-right",
     }));
 
     return [attribute, ...bids];
@@ -131,12 +131,12 @@ export function ComparisonGrid({
           value={query}
           onChange={(event) => onSearch(event.target.value)}
           placeholder="Filter attributes…"
-          className="h-9 w-full max-w-64 rounded-lg border border-border-base bg-surface px-3 text-sm outline-none focus:border-primary sm:w-64"
+          className="h-9 w-full max-w-64 rounded-lg border border-border-base bg-surface px-3 text-sm outline-none placeholder:text-muted-soft focus:border-primary sm:w-64"
         />
         <button
           type="button"
           onClick={onExport}
-          className="h-9 rounded-lg border border-border-base bg-surface px-3 text-xs font-semibold text-muted hover:text-foreground"
+          className="h-9 rounded-lg border border-border-base bg-surface px-3 text-xs font-semibold text-muted transition-colors hover:border-border-strong hover:text-foreground"
         >
           Export CSV
         </button>

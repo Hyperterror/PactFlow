@@ -66,6 +66,7 @@ export default async function AgreementsPage() {
         eyebrow="Agreements"
         title="Agreements"
         description="Each agreement is a versioned record both parties approved. A change after approval is a new version, never an edit."
+        pillar="agreement"
       />
 
       {agreements.length === 0 ? (

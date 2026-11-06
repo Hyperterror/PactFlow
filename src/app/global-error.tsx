@@ -20,15 +20,15 @@ export default function GlobalError({
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "#f8fafc",
-          color: "#0f172a",
+          background: "#f5f3ed",
+          color: "#27312e",
           fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
           padding: 24,
         }}
       >
         <main style={{ maxWidth: 480 }}>
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>PactFlow could not start</h1>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: "#475569", marginTop: 12 }}>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: "#5c6963", marginTop: 12 }}>
             {error.message || "An unexpected error stopped the application from rendering."}
           </p>
           <button
@@ -39,8 +39,8 @@ export default function GlobalError({
               padding: "10px 16px",
               borderRadius: 8,
               border: "none",
-              background: "#0f172a",
-              color: "#ffffff",
+              background: "#193c35",
+              color: "#f7f5ef",
               fontSize: 14,
               fontWeight: 500,
               cursor: "pointer",

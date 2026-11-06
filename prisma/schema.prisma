@@ -156,6 +156,7 @@ model User {
   comparisonAnnotations ComparisonAnnotation[]
   quotationComments     QuotationComment[]
   projectTemplates      ProjectTemplate[]
+  passwordResetTokens   PasswordResetToken[]
 
   @@index([email])
 }
@@ -179,6 +180,21 @@ model LoginAttempt {
   user        User?     @relation(fields: [userId], references: [id])
 
   @@index([email, attemptedAt])
+}
+
+/// Account recovery. Only a SHA-256 hash of the token is stored, so a database
+/// leak does not hand out working reset links. Tokens are single use and expire.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
 }
 
 model Brief {

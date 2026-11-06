@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -11,12 +11,13 @@ import { Alert, buttonClass, Field, inputClass } from "@/components/ui";
  * password". The only distinct message is the lockout, which the user must be
  * told about because waiting is the only remedy.
  */
-export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
+export function LoginForm({ callbackUrl, justReset = false }: { callbackUrl: string; justReset?: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,6 +39,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
             ? "This account is temporarily locked after repeated failed attempts. Try again later."
             : "Those credentials are not valid.",
         );
+        // Put the caret where the fix has to happen rather than leaving the
+        // keyboard focus stranded on the submit button.
+        emailRef.current?.focus();
         return;
       }
 
@@ -56,20 +60,25 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
       <p className="mt-1.5 text-sm text-muted">Continue to your briefs, agreements and deliveries.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+        {justReset && !error ? (
+          <Alert tone="success">Password updated. Sign in with your new password.</Alert>
+        ) : null}
         {error ? <Alert tone="danger">{error}</Alert> : null}
 
-        <Field label="Email" htmlFor="email" required>
+        <Field label="Email" htmlFor="email" hint="For example: you@studio.com" required>
           <input
+            ref={emailRef}
             id="email"
             name="email"
             type="email"
             autoComplete="email"
+            spellCheck={false}
+            autoCapitalize="none"
             maxLength={254}
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             className={inputClass}
-            placeholder="you@studio.com"
           />
         </Field>
 
@@ -84,9 +93,17 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             className={inputClass}
-            placeholder="••••••••"
           />
         </Field>
+
+        <div className="flex justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
 
         <button type="submit" className={buttonClass("primary", "md", "w-full")} disabled={pending}>
           {pending ? "Signing in…" : "Sign in"}

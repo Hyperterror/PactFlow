@@ -14,7 +14,14 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // `/` is the public landing page: it renders for anonymous visitors and
 // redirects authenticated visitors into their workspace.
-const PUBLIC_PATHS = ["/", "/login", "/register", "/payments/mock-approve"];
+const PUBLIC_PATHS = [
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/payments/mock-approve",
+];
 const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/webhooks",

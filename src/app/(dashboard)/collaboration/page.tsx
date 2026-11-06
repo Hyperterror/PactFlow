@@ -25,6 +25,7 @@ export default async function CollaborationPage() {
         eyebrow="Relationship intelligence"
         title="Collaboration"
         description="Every counterpart you have finished a project with, the preferences you both confirmed, and the grounded summary you can carry into a repeat engagement."
+        pillar="relationship"
       />
 
       {pairs.length === 0 ? (

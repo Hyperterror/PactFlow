@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string | string[] }>;
+  searchParams: Promise<{ callbackUrl?: string | string[]; reset?: string }>;
 }) {
   const user = await getSessionUser();
   const params = await searchParams;
@@ -17,5 +17,5 @@ export default async function LoginPage({
 
   if (user) redirect(callbackUrl);
 
-  return <LoginForm callbackUrl={callbackUrl} />;
+  return <LoginForm callbackUrl={callbackUrl} justReset={params.reset === "1"} />;
 }

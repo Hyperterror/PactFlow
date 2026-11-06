@@ -124,6 +124,7 @@ export default async function AgreementPage({ params }: Params) {
         eyebrow="Agreement"
         title={current.title ?? "Agreement"}
         description="Both parties approved this text. Delivery, revisions and payment all hang off this version."
+        pillar="agreement"
         meta={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
             <StatusBadge status={agreement.status} />
@@ -241,6 +242,10 @@ export default async function AgreementPage({ params }: Params) {
                 clientApproved={approvalState.clientApproved}
                 freelancerApproved={approvalState.freelancerApproved}
                 canApprove={canApprove}
+                total={current.total ?? 0}
+                currency={agreement.currency}
+                milestoneCount={milestones.length}
+                revisionLimit={agreement.revisionLimit}
               />
             </CardBody>
           </Card>

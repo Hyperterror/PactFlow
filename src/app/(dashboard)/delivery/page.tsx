@@ -22,6 +22,7 @@ export default async function DeliveryPage() {
         eyebrow="Delivery"
         title="Delivery rooms"
         description="Each milestone has its own room: upload, preview, review, then payment. The original file stays locked until the payment is captured."
+        pillar="delivery"
       />
 
       {withMilestones.length === 0 ? (

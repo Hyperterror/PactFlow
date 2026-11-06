@@ -34,6 +34,7 @@ export default async function DeliveryRoomPage({ params }: Params) {
         eyebrow="Delivery room"
         title={milestone.name}
         description={milestone.description}
+        pillar="delivery"
         meta={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
             <StatusBadge status={milestone.status} />
@@ -54,6 +55,13 @@ export default async function DeliveryRoomPage({ params }: Params) {
           </div>
         }
       />
+
+      {paymentCaptured ? (
+        <Alert tone="success" title="Payment captured — original unlocked">
+          This milestone is paid. The original file and its signed download link are now available in the deliverables
+          list below.
+        </Alert>
+      ) : null}
 
       {!originalUnlocked ? (
         <Alert tone="warning" title="Original file locked">

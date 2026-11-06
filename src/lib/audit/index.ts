@@ -109,6 +109,7 @@ export const AUDIT_EVENT_TYPES = [
   "ACCESS_VIOLATION",
   "NOTIFICATION_ESCALATED",
   "AI_GENERATION_FAILED",
+  "PASSWORD_RESET",
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];

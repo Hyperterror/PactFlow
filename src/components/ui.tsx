@@ -102,9 +102,70 @@ export function StatusBadge({ status, className }: { status: string | null | und
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-card border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]", className)}>
+    <div className={cn("rounded-card border border-border-base bg-surface shadow-card", className)}>
       {children}
     </div>
+  );
+}
+
+/**
+ * The three product pillars, each with a quiet visual identity of its own.
+ *
+ * The accents are treatments rather than colours: a brass rule for the
+ * editorial work, a sage wash for the secure work, a stone wash for the human
+ * work. One system, three tones.
+ */
+export type Pillar = "agreement" | "delivery" | "relationship";
+
+const PILLAR_CLASSES: Record<Pillar, string> = {
+  agreement: "pillar-agreement",
+  delivery: "pillar-delivery",
+  relationship: "pillar-relationship",
+};
+
+export function PillarCard({
+  pillar,
+  children,
+  className,
+}: {
+  pillar: Pillar;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      data-pillar={pillar}
+      className={cn(
+        "flex flex-col rounded-card border border-border-base bg-surface p-5 shadow-card",
+        PILLAR_CLASSES[pillar],
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Small uppercase kicker. Brass marks the editorial pillar without shouting. */
+export function PillarEyebrow({
+  children,
+  tone = "muted",
+  className,
+}: {
+  children: ReactNode;
+  tone?: "muted" | "brass";
+  className?: string;
+}) {
+  return (
+    <p
+      className={cn(
+        "text-[11px] font-semibold uppercase tracking-[0.16em]",
+        tone === "brass" ? "text-brass-strong" : "text-muted-soft",
+        className,
+      )}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -134,21 +195,38 @@ export function CardBody({ children, className }: { children: ReactNode; classNa
   return <div className={cn("px-5 py-4", className)}>{children}</div>;
 }
 
+/**
+ * The pillar treatments, carried into the app so the landing page's mental
+ * model is honoured inside the product rather than abandoned at the door.
+ */
+const PILLAR_HEADER: Record<Pillar, string> = {
+  agreement: "border-t-2 border-brass pt-4",
+  delivery: "border-t-2 border-primary/35 pt-4",
+  relationship: "border-t-2 border-border-strong pt-4",
+};
+
 export function PageHeader({
   eyebrow,
   title,
   description,
   actions,
   meta,
+  pillar,
 }: {
   eyebrow?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
+  pillar?: Pillar;
 }) {
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <header
+      className={cn(
+        "mb-6 flex flex-wrap items-start justify-between gap-4",
+        pillar ? PILLAR_HEADER[pillar] : undefined,
+      )}
+    >
       <div className="min-w-0">
         {eyebrow ? (
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">{eyebrow}</p>
@@ -168,8 +246,8 @@ export const buttonStyles = {
     primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
     secondary: "border border-border-strong bg-surface text-foreground hover:bg-surface-muted",
     ghost: "text-muted hover:bg-surface-muted hover:text-foreground",
-    danger: "bg-danger text-white hover:bg-danger/90",
-    success: "bg-success text-white hover:bg-success/90",
+    danger: "bg-danger text-danger-foreground hover:bg-danger/90",
+    success: "bg-success text-success-foreground hover:bg-success/90",
     link: "text-primary underline-offset-4 hover:underline",
   },
   size: {
@@ -307,7 +385,7 @@ export function KeyValue({ label, children }: { label: ReactNode; children: Reac
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
       <dt className="text-xs font-medium uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="text-right text-sm font-medium text-foreground">{children}</dd>
+      <dd className="tabular text-right text-sm font-medium text-foreground">{children}</dd>
     </div>
   );
 }
@@ -332,7 +410,7 @@ export function Stat({
       <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
       <p
         className={cn(
-          "mt-1 text-lg font-semibold tracking-tight",
+          "tabular mt-1 text-lg font-semibold tracking-tight",
           tone === "danger" ? "text-danger" : tone === "success" ? "text-success" : "text-foreground",
         )}
       >
