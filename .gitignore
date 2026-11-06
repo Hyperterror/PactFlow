@@ -12,6 +12,15 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
+
+# local artefacts created by the test suite
+/prisma/*.db
+/prisma/*.db-journal
+/.data/
+/e2e/.auth/
 
 # next.js
 /.next/
@@ -30,8 +39,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (can opt-in for committing through the negation below)
 .env*
+!.env.example
 
 # vercel
 .vercel

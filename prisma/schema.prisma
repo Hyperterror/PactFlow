@@ -1,0 +1,661 @@
+// PactFlow — Prisma schema
+//
+// This schema is the single source of truth for the data model. The local
+// development datasource is SQLite so the platform runs with zero external
+// services; `npm run db:pg-schema` derives `prisma/schema.postgres.prisma`
+// (identical models, PostgreSQL datasource) for production deployments.
+//
+// Retention: AuditLog and WebhookEvent are append-only. They must be retained
+// for a minimum of 2 years (Requirement 24.5) — no delete paths exist in the
+// application code, and purge jobs must respect the retention window.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum BriefStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum QuotationStatus {
+  AI_DRAFT
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum AgreementStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ApprovalState {
+  PENDING
+  APPROVED
+}
+
+enum ChangeRequestStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum ScopeLabel {
+  INCLUDED
+  OUTSIDE_SCOPE
+  AMBIGUOUS
+}
+
+enum MilestoneStatus {
+  PENDING
+  DELIVERED
+  APPROVED
+  OVERDUE
+}
+
+enum DeliverableStatus {
+  UPLOADING
+  UPLOADED
+  REVISION_REQUESTED
+  APPROVED
+  PROCESSING_FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  CAPTURED
+  FAILED
+  REVIEW_REQUIRED
+}
+
+enum WorkingPreferenceStatus {
+  PENDING_ACKNOWLEDGEMENT
+  CONFIRMED
+}
+
+enum NotificationType {
+  INVITATION_RECEIVED
+  INVITATION_REVOKED
+  QUOTATION_SUBMITTED
+  QUOTATION_WITHDRAWN
+  COMMENT_POSTED
+  AGREEMENT_READY
+  AGREEMENT_ACTIVE
+  CHANGE_REQUEST_SUBMITTED
+  CHANGE_REQUEST_CLASSIFIED
+  CHANGE_REQUEST_VOTED
+  CHANGE_REQUEST_REMINDER
+  CHANGE_REQUEST_EXPIRED
+  MILESTONE_DELIVERED
+  MILESTONE_OVERDUE
+  DELIVERABLE_REVIEW_NEEDED
+  DELIVERABLE_REMINDER
+  PAYMENT_CAPTURED
+  SCOPE_CLASSIFICATION_FAILED
+  DISCUSSION_MESSAGE
+  DELIVERABLE_REVIEWED
+  COLLABORATION_READY
+}
+
+// ─── Core Entities ────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  displayName  String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions              Session[]
+  loginAttempts         LoginAttempt[]
+  briefsAsClient        Brief[]
+  invitationsSent       Invitation[]               @relation("InvitationClient")
+  invitationsReceived   Invitation[]               @relation("InvitationFreelancer")
+  quotations            Quotation[]
+  agreementApprovals    AgreementApproval[]
+  changeRequests        ChangeRequest[]            @relation("ChangeRequestSubmitter")
+  changeRequestVotes    ChangeRequestVote[]
+  scopeDisputes         ScopeLabelDispute[]
+  discussionMessages    DiscussionMessage[]
+  deliverables          Deliverable[]
+  revisionRequests      RevisionRequest[]
+  paymentsMade          Payment[]                  @relation("PaymentClient")
+  notifications         Notification[]
+  auditActorEntries     AuditLog[]
+  collaborationAsClient CollaborationHistory[]     @relation("CollabClient")
+  collaborationAsFreelancer CollaborationHistory[] @relation("CollabFreelancer")
+  workingPreferences    WorkingPreference[]
+  collaborationSummaries CollaborationSummary[]
+  signedUrlEvents       SignedUrlEvent[]
+  comparisonAnnotations ComparisonAnnotation[]
+  quotationComments     QuotationComment[]
+  projectTemplates      ProjectTemplate[]
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionToken String   @unique
+  startedAt    DateTime @default(now())
+  expiresAt    DateTime
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model LoginAttempt {
+  id          String    @id @default(cuid())
+  email       String
+  userId      String?
+  success     Boolean
+  attemptedAt DateTime  @default(now())
+  lockedUntil DateTime?
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@index([email, attemptedAt])
+}
+
+model Brief {
+  id                String      @id @default(cuid())
+  clientId          String
+  title             String
+  description       String
+  deliverables      Json // string[] — 1..20 deliverable descriptions
+  budgetMin         Decimal
+  budgetMax         Decimal
+  targetDate        DateTime
+  status            BriefStatus @default(DRAFT)
+  publishedAt       DateTime?
+  projectTemplateId String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  client               User                  @relation(fields: [clientId], references: [id])
+  projectTemplate      ProjectTemplate?      @relation(fields: [projectTemplateId], references: [id])
+  invitations          Invitation[]
+  quotations           Quotation[]
+  agreements           Agreement[]
+  comparisonWorkspace  ComparisonWorkspace?
+
+  @@index([clientId, createdAt])
+}
+
+model Invitation {
+  id           String           @id @default(cuid())
+  briefId      String
+  clientId     String
+  freelancerId String
+  token        String           @unique @default(cuid())
+  status       InvitationStatus @default(PENDING)
+  // Repeat-engagement context attached at send time (Requirement 22.5).
+  attachmentSummaryId String?
+  attachmentHistoryId String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  brief      Brief @relation(fields: [briefId], references: [id])
+  client     User  @relation("InvitationClient", fields: [clientId], references: [id])
+  freelancer User  @relation("InvitationFreelancer", fields: [freelancerId], references: [id])
+
+  @@unique([briefId, freelancerId])
+  @@index([freelancerId, status])
+}
+
+model Quotation {
+  id                String          @id @default(cuid())
+  briefId           String
+  freelancerId      String
+  status            QuotationStatus @default(AI_DRAFT)
+  lineItems         Json // QuotationLineItem[]
+  timelineDays      Int
+  notes             String
+  aiDraftSnapshot   Json? // Original AI values preserved for audit
+  aiSourcedFields   Json? // Which fields were accepted unchanged from AI
+  dismissedPricing  Json? // Line-item indices whose recommendation was dismissed
+  submittedAt       DateTime?
+  regenerationCount Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  brief      Brief  @relation(fields: [briefId], references: [id])
+  freelancer User   @relation(fields: [freelancerId], references: [id])
+  comments   QuotationComment[]
+  agreements Agreement[]
+  comparisonItems ComparisonItem[]
+
+  @@index([briefId, submittedAt])
+}
+
+model QuotationComment {
+  id                     String    @id @default(cuid())
+  quotationId            String
+  authorId               String
+  content                String
+  editedAt               DateTime?
+  isClarificationRequest Boolean   @default(false)
+  clarificationStatus    String? // OPEN | RESOLVED
+  answeredByCommentId    String?
+  createdAt              DateTime  @default(now())
+
+  quotation Quotation @relation(fields: [quotationId], references: [id])
+  author    User      @relation(fields: [authorId], references: [id])
+
+  @@index([quotationId, createdAt])
+}
+
+model Agreement {
+  id             String          @id @default(cuid())
+  briefId        String
+  quotationId    String
+  clientId       String
+  freelancerId   String
+  status         AgreementStatus @default(PENDING_APPROVAL)
+  currentVersion Int             @default(1)
+  revisionLimit  Int             @default(3)
+  currency       String          @default("USD")
+  startDate      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  brief              Brief               @relation(fields: [briefId], references: [id])
+  quotation          Quotation           @relation(fields: [quotationId], references: [id])
+  versions           AgreementVersion[]
+  approvals          AgreementApproval[]
+  milestones         Milestone[]
+  changeRequests     ChangeRequest[]
+  discussionMessages DiscussionMessage[]
+
+  @@index([clientId])
+  @@index([freelancerId])
+}
+
+model AgreementVersion {
+  id            String   @id @default(cuid())
+  agreementId   String
+  versionNumber Int
+  content       Json // Full immutable snapshot of agreement terms
+  authorId      String
+  authorRole    String // CLIENT | FREELANCER | PLATFORM
+  createdAt     DateTime @default(now())
+
+  agreement  Agreement           @relation(fields: [agreementId], references: [id])
+  approvals  AgreementApproval[]
+  milestones Milestone[]
+  payments   Payment[]
+
+  @@unique([agreementId, versionNumber]) // Enforces monotonicity invariant at DB level
+  @@index([agreementId, versionNumber])
+}
+
+model AgreementApproval {
+  id            String        @id @default(cuid())
+  agreementId   String
+  versionId     String
+  versionNumber Int
+  actorId       String
+  actorRole     String // CLIENT | FREELANCER
+  state         ApprovalState @default(PENDING)
+  approvedAt    DateTime?
+  retractedAt   DateTime?
+  createdAt     DateTime      @default(now())
+
+  agreement Agreement        @relation(fields: [agreementId], references: [id])
+  version   AgreementVersion @relation(fields: [versionId], references: [id])
+  actor     User             @relation(fields: [actorId], references: [id])
+
+  @@unique([agreementId, versionNumber, actorRole])
+}
+
+model ChangeRequest {
+  id                   String              @id @default(cuid())
+  agreementId          String
+  submitterId          String
+  discussionMessageId  String              @unique
+  status               ChangeRequestStatus @default(SUBMITTED)
+  scopeLabel           ScopeLabel?
+  scopeRationale       String?
+  scopeClassifiedAt    DateTime?
+  responseDeadline     DateTime
+  reminderSentAt       DateTime?
+  clientVote           String? // APPROVE | REJECT
+  freelancerVote       String?
+  clientVotedAt        DateTime?
+  freelancerVotedAt    DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  agreement      Agreement            @relation(fields: [agreementId], references: [id])
+  submitter      User                 @relation("ChangeRequestSubmitter", fields: [submitterId], references: [id])
+  discussionMessage DiscussionMessage @relation(fields: [discussionMessageId], references: [id])
+  votes          ChangeRequestVote[]
+  disputes       ScopeLabelDispute[]
+
+  @@index([agreementId, status])
+}
+
+model ChangeRequestVote {
+  id              String    @id @default(cuid())
+  changeRequestId String
+  actorId         String
+  actorRole       String // CLIENT | FREELANCER
+  vote            String // APPROVE | REJECT
+  retractedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  changeRequest ChangeRequest @relation(fields: [changeRequestId], references: [id])
+  actor         User          @relation(fields: [actorId], references: [id])
+}
+
+model ScopeLabelDispute {
+  id              String   @id @default(cuid())
+  changeRequestId String
+  actorId         String
+  justification   String
+  createdAt       DateTime @default(now())
+
+  changeRequest ChangeRequest @relation(fields: [changeRequestId], references: [id])
+  actor         User          @relation(fields: [actorId], references: [id])
+}
+
+model DiscussionMessage {
+  id              String   @id @default(cuid())
+  agreementId     String
+  authorId        String
+  content         String
+  isScopeProposal Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  agreement     Agreement      @relation(fields: [agreementId], references: [id])
+  author        User           @relation(fields: [authorId], references: [id])
+  changeRequest ChangeRequest?
+
+  @@index([agreementId, createdAt])
+}
+
+model Milestone {
+  id                String          @id @default(cuid())
+  agreementId       String
+  agreementVersionId String
+  name              String
+  description       String
+  dueDate           DateTime
+  paymentAmount     Decimal
+  status            MilestoneStatus @default(PENDING)
+  deliveredAt       DateTime?
+  approvedAt        DateTime?
+  overdueNotifiedAt DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  agreement        Agreement        @relation(fields: [agreementId], references: [id])
+  agreementVersion AgreementVersion @relation(fields: [agreementVersionId], references: [id])
+  deliverables     Deliverable[]
+  payment          Payment?
+
+  @@index([agreementId, dueDate, createdAt])
+}
+
+model Deliverable {
+  id            String            @id @default(cuid())
+  milestoneId   String
+  freelancerId  String
+  versionNumber Int               @default(1)
+  status        DeliverableStatus @default(UPLOADING)
+  originalKey   String            @unique // Storage key — never exposed in API responses
+  previewKey    String            @unique // Independent of originalKey
+  originalHash  String // SHA-256 hex
+  previewHash   String? // SHA-256 hex of preview
+  fileName      String
+  fileSizeBytes Int
+  uploadedAt    DateTime          @default(now())
+  revisionCount Int               @default(0)
+  updatedAt     DateTime          @updatedAt
+
+  milestone       Milestone        @relation(fields: [milestoneId], references: [id])
+  freelancer      User             @relation(fields: [freelancerId], references: [id])
+  revisions       RevisionRequest[]
+  payment         Payment?
+  signedUrlEvents SignedUrlEvent[]
+
+  @@index([milestoneId, versionNumber])
+}
+
+model RevisionRequest {
+  id           String   @id @default(cuid())
+  deliverableId String
+  clientId     String
+  feedbackText String
+  createdAt    DateTime @default(now())
+
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id])
+  client      User        @relation(fields: [clientId], references: [id])
+
+  @@index([deliverableId])
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  milestoneId        String        @unique
+  deliverableId      String?       @unique
+  agreementVersionId String
+  clientId           String
+  status             PaymentStatus @default(PENDING)
+  amountExpected     Decimal
+  amountCaptured     Decimal?
+  currency           String        @default("USD")
+  paypalOrderId      String?       @unique
+  paypalStatus       String?
+  approveUrl         String?
+  idempotencyKey     String        @unique // Per-attempt key
+  capturedAt         DateTime?
+  captureResponse    Json? // Full PayPal capture API response
+  reviewFlag         Boolean       @default(false)
+  lastError          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  milestone        Milestone        @relation(fields: [milestoneId], references: [id])
+  deliverable      Deliverable?     @relation(fields: [deliverableId], references: [id])
+  agreementVersion AgreementVersion @relation(fields: [agreementVersionId], references: [id])
+  client           User             @relation("PaymentClient", fields: [clientId], references: [id])
+
+  @@index([idempotencyKey])
+}
+
+model WebhookEvent {
+  id                String    @id @default(cuid())
+  paypalEventId     String    @unique // Idempotency key
+  eventType         String
+  rawPayload        Json
+  signatureVerified Boolean
+  isDuplicate       Boolean   @default(false)
+  processedAt       DateTime?
+  processingError   String?
+  receivedAt        DateTime  @default(now())
+
+  @@index([eventType, receivedAt])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  eventType     String
+  actorId       String
+  resourceId    String
+  resourceType  String
+  previousState String?
+  newState      String
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  // Append-only: no update or delete paths exist in the application
+  @@index([resourceId, resourceType, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  payload     Json
+  deliveredAt DateTime?
+  retryCount  Int              @default(0)
+  guaranteed  Boolean          @default(false)
+  escalatedAt DateTime?
+  lastError   String?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, deliveredAt, createdAt])
+}
+
+model CollaborationHistory {
+  id                 String   @id @default(cuid())
+  clientId           String
+  freelancerId       String
+  agreementId        String   @unique
+  agreementSnapshot  Json // Immutable snapshot of completed AgreementVersion
+  deliverables       Json // Approved deliverable summaries
+  completedAt        DateTime
+  totalPaymentAmount Decimal
+  createdAt          DateTime @default(now())
+
+  client           User                   @relation("CollabClient", fields: [clientId], references: [id])
+  freelancer       User                   @relation("CollabFreelancer", fields: [freelancerId], references: [id])
+  preferences      WorkingPreference[]
+  summaries        CollaborationSummary[]
+  templates        ProjectTemplate[]
+
+  @@index([clientId, freelancerId])
+}
+
+model WorkingPreference {
+  id             String                  @id @default(cuid())
+  historyId      String
+  authorId       String
+  statement      String
+  status         WorkingPreferenceStatus @default(PENDING_ACKNOWLEDGEMENT)
+  authorAcknowledgedAt DateTime?
+  acknowledgedBy String? // other party's user id
+  acknowledgedAt DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  history CollaborationHistory @relation(fields: [historyId], references: [id])
+  author  User                 @relation(fields: [authorId], references: [id])
+
+  @@index([historyId, status])
+}
+
+model CollaborationSummary {
+  id                String   @id @default(cuid())
+  historyId         String
+  requestorId       String
+  content           Json // CollaborationSummarySchema output
+  generatedAt       DateTime @default(now())
+  flaggedStatements Json? // Array of {statementIndex, flaggedByUserId, flaggedAt}
+
+  history   CollaborationHistory @relation(fields: [historyId], references: [id])
+  requestor User                 @relation(fields: [requestorId], references: [id])
+
+  @@index([historyId, generatedAt])
+}
+
+model ProjectTemplate {
+  id           String   @id @default(cuid())
+  historyId    String
+  clientId     String
+  name         String
+  templateData Json // Agreement structure, milestone config, deliverable types
+  createdAt    DateTime @default(now())
+
+  history CollaborationHistory @relation(fields: [historyId], references: [id])
+  client  User                 @relation(fields: [clientId], references: [id])
+  briefs  Brief[]
+
+  @@index([clientId])
+}
+
+model SignedUrlEvent {
+  id            String    @id @default(cuid())
+  clientId      String
+  deliverableId String
+  generatedAt   DateTime  @default(now())
+  expiresAt     DateTime
+  invalidatedAt DateTime? // Set when role changes trigger early invalidation
+
+  client      User        @relation(fields: [clientId], references: [id])
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id])
+
+  @@index([deliverableId, generatedAt])
+}
+
+model ComparisonWorkspace {
+  id         String    @id @default(cuid())
+  briefId    String    @unique
+  clientId   String
+  selections Json // Array of quotation IDs currently in comparison
+  aiSummary  Json?
+  exportedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  brief       Brief                  @relation(fields: [briefId], references: [id])
+  annotations ComparisonAnnotation[]
+}
+
+model ComparisonItem {
+  id          String   @id @default(cuid())
+  workspaceId String
+  quotationId String
+  addedAt     DateTime @default(now())
+
+  quotation Quotation @relation(fields: [quotationId], references: [id])
+
+  @@unique([workspaceId, quotationId])
+}
+
+model ComparisonAnnotation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  quotationId String
+  attribute   String
+  noteText    String
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace ComparisonWorkspace @relation(fields: [workspaceId], references: [id])
+  client    User                @relation(fields: [clientId], references: [id])
+
+  @@unique([workspaceId, quotationId, attribute])
+}

@@ -1,0 +1,64 @@
+# Render Blueprint for PactFlow.
+#
+# Two details drive this file. First, PactFlow keeps its data in SQLite, and
+# Render's filesystem is ephemeral by default: without the disk below, the
+# database file and every uploaded deliverable would disappear on each deploy.
+# `DATABASE_URL` and `LOCAL_STORAGE_DIR` therefore both point inside the mount.
+#
+# Second, the start command seeds the demo data exactly once. `prisma/seed.ts`
+# uses plain `create` calls, so running it on every boot would collide with the
+# rows the previous boot wrote. The marker file lives on the same disk, which
+# makes it survive restarts but disappear with a fresh disk.
+#
+# Persistent disks require a paid instance type; the free plan cannot mount one.
+services:
+  - type: web
+    name: pactflow
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand:
+      npm run db:push -- --skip-generate && (test -f /var/data/.seeded || (npm run db:seed && touch /var/data/.seeded)) && npm start
+    healthCheckPath: /login
+    autoDeploy: true
+    disk:
+      name: pactflow-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        value: file:/var/data/pactflow.db
+      - key: LOCAL_STORAGE_DIR
+        value: /var/data/storage
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      - key: STORAGE_SIGNING_SECRET
+        generateValue: true
+      - key: PAYPAL_WEBHOOK_SECRET
+        generateValue: true
+      # "mock" runs the whole payment lifecycle against the local simulator, so
+      # the demo works with no PayPal credentials at all.
+      - key: PAYPAL_MODE
+        value: mock
+      # Public URL of the service, e.g. https://pactflow.onrender.com. Prompted
+      # on first deploy because it is only known once the service exists.
+      - key: APP_URL
+        sync: false
+      # Optional: leave unset to keep the deterministic heuristic AI engine.
+      - key: LLM_API_KEY
+        sync: false
+      # Optional: set together with PAYPAL_MODE=sandbox to call the real API.
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      # Optional: comma-separated operators allowed to read /api/audit and run cron.
+      - key: OPERATOR_EMAILS
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
