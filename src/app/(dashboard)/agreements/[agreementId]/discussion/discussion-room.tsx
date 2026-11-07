@@ -84,6 +84,7 @@ export function DiscussionRoom({
   const [messages, setMessages] = useState<FeedMessage[]>(initialMessages);
   const [proposals, setProposals] = useState<ProposalRow[]>(initialProposals);
   const [draft, setDraft] = useState("");
+  const [tagAsProposal, setTagAsProposal] = useState(false);
   const [proposalDraft, setProposalDraft] = useState("");
   const [deadlineDays, setDeadlineDays] = useState("7");
   const [showProposalForm, setShowProposalForm] = useState(false);
@@ -123,7 +124,19 @@ export function DiscussionRoom({
     event.preventDefault();
     const content = draft.trim();
     if (content.length === 0) return;
-    await run("message", `/api/agreements/${agreementId}/messages`, { content }, () => setDraft(""));
+    if (tagAsProposal) {
+      await run(
+        "message",
+        `/api/agreements/${agreementId}/change-requests`,
+        { content, deadlineDays: Number(deadlineDays) },
+        () => {
+          setDraft("");
+          setTagAsProposal(false);
+        },
+      );
+    } else {
+      await run("message", `/api/agreements/${agreementId}/messages`, { content }, () => setDraft(""));
+    }
   }
 
   async function submitProposal(event: FormEvent<HTMLFormElement>) {
@@ -206,7 +219,29 @@ export function DiscussionRoom({
                   placeholder="Write a message…"
                   aria-label="New message"
                 />
-                <div className="flex justify-end">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={tagAsProposal}
+                      onChange={(event) => setTagAsProposal(event.target.checked)}
+                      className="rounded border-border-strong accent-primary"
+                    />
+                    Tag as scope-change proposal
+                  </label>
+                  {tagAsProposal ? (
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      Response window (days)
+                      <input
+                        className={cn(inputClass, "h-8 w-20 px-2 text-xs")}
+                        type="number"
+                        min={MIN_DEADLINE_DAYS}
+                        max={MAX_DEADLINE_DAYS}
+                        value={deadlineDays}
+                        onChange={(event) => setDeadlineDays(event.target.value)}
+                      />
+                    </label>
+                  ) : null}
                   <button
                     type="submit"
                     className={buttonClass("primary", "sm")}
@@ -448,6 +483,48 @@ export function DiscussionRoom({
                             </button>
                           </div>
                         ) : null}
+
+                        <details className="mt-3">
+                          <summary className={cn(buttonClass("ghost", "sm"), "cursor-pointer list-none text-xs")}>
+                            Audit trail ({proposal.votes.length} vote{proposal.votes.length !== 1 ? "s" : ""})
+                          </summary>
+                          {proposal.votes.length === 0 ? (
+                            <p className="mt-2 text-xs text-muted">No votes recorded.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-1.5">
+                              {proposal.votes.map((vote, voteIndex) => (
+                                <li
+                                  key={voteIndex}
+                                  className={cn(
+                                    "rounded-md border px-2 py-1.5 text-xs",
+                                    vote.retractedAt
+                                      ? "border-border-base text-muted line-through"
+                                      : "border-border-strong",
+                                  )}
+                                >
+                                  <span className="font-semibold">{humanize(vote.actorRole)}</span>
+                                  {" — "}
+                                  <span
+                                    className={cn(
+                                      vote.vote === "APPROVE" && "text-success",
+                                      vote.vote === "REJECT" && "text-danger",
+                                    )}
+                                  >
+                                    {humanize(vote.vote)}
+                                  </span>
+                                  {" · "}
+                                  <span title={vote.createdAt}>{formatDateTime(vote.createdAt)}</span>
+                                  {vote.retractedAt ? (
+                                    <>
+                                      {" "}
+                                      <span className="text-muted">(retracted {formatDateTime(vote.retractedAt)})</span>
+                                    </>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </details>
                       </li>
                     );
                   })}
