@@ -60,6 +60,13 @@ const STATUS_TONES: Record<string, Tone> = {
   FAILED: "danger",
   REVIEW_REQUIRED: "warning",
   CAPTURED: "success",
+  // Engagement & requirements
+  DISCOVERY: "info",
+  REQUIREMENTS: "warning",
+  REQUIREMENTS_APPROVED: "success",
+  AGREEMENT: "primary",
+  IN_REVIEW: "warning",
+  SUPERSEDED: "neutral",
   // Preferences
   PENDING_ACKNOWLEDGEMENT: "warning",
   CONFIRMED: "success",

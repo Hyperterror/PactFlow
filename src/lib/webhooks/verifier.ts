@@ -13,7 +13,16 @@ export interface SignatureHeaders {
 export interface VerificationResult {
   valid: boolean;
   reason?: string;
+  /**
+   * True when the signature could not be checked at all (PayPal unreachable or
+   * answering 5xx). The receiver answers 503 so PayPal retries the delivery,
+   * instead of recording a genuine event as forged.
+   */
+  retryable?: boolean;
 }
+
+/** The default HMAC secret is public in the repository; it is a dev-only value. */
+export const DEV_WEBHOOK_SECRET = "pactflow-dev-webhook-secret";
 
 export function extractSignatureHeaders(headers: Headers): SignatureHeaders {
   return {
@@ -43,8 +52,11 @@ function safeEqual(a: string, b: string): boolean {
 
 /**
  * Requirement 18.2 — verify the event signature before touching any payload.
- * Uses PayPal's verify-webhook-signature API when Sandbox credentials and a
- * webhook id are configured, and the local HMAC scheme otherwise.
+ *
+ * Sandbox mode always uses PayPal's verify-webhook-signature API and refuses to
+ * run without PAYPAL_WEBHOOK_ID: falling back to the local HMAC there would let
+ * anyone who knows the secret mark real orders as paid. The local HMAC scheme
+ * exists for mock mode only, and in production it refuses the public default.
  */
 export async function verifyWebhookSignature(
   rawBody: string,
@@ -52,9 +64,19 @@ export async function verifyWebhookSignature(
 ): Promise<VerificationResult> {
   const signature = extractSignatureHeaders(headers);
 
-  if (isRealPayPalEnabled() && env.paypalWebhookId) {
+  if (isRealPayPalEnabled()) {
+    if (!env.paypalWebhookId) {
+      console.error("[webhook] PAYPAL_MODE=sandbox but PAYPAL_WEBHOOK_ID is not set; rejecting delivery");
+      return { valid: false, reason: "PAYPAL_WEBHOOK_ID is not configured." };
+    }
     if (!signature.transmissionId || !signature.transmissionSig) {
       return { valid: false, reason: "Missing PayPal transmission headers." };
+    }
+    let webhookEvent: unknown;
+    try {
+      webhookEvent = JSON.parse(rawBody);
+    } catch {
+      return { valid: false, reason: "Payload was not valid JSON." };
     }
     try {
       const token = await getAccessToken();
@@ -68,15 +90,27 @@ export async function verifyWebhookSignature(
           auth_algo: signature.authAlgo,
           transmission_sig: signature.transmissionSig,
           webhook_id: env.paypalWebhookId,
-          webhook_event: JSON.parse(rawBody),
+          webhook_event: webhookEvent,
         }),
       });
-      const payload = (await response.json()) as { verification_status?: string };
+      if (response.status >= 500 || response.status === 429) {
+        return { valid: false, retryable: true, reason: `PayPal verification unavailable (${response.status})` };
+      }
+      const payload = (await response.json().catch(() => ({}))) as { verification_status?: string };
       const valid = response.ok && payload.verification_status === "SUCCESS";
       return valid ? { valid } : { valid, reason: payload.verification_status ?? "verification failed" };
     } catch (error) {
-      return { valid: false, reason: error instanceof Error ? error.message : "verification error" };
+      // Network failure or an auth outage: the signature was never judged.
+      return {
+        valid: false,
+        retryable: true,
+        reason: error instanceof Error ? error.message : "verification error",
+      };
     }
+  }
+
+  if (env.isProduction && env.paypalWebhookSecret === DEV_WEBHOOK_SECRET) {
+    return { valid: false, reason: "PAYPAL_WEBHOOK_SECRET is the public development default." };
   }
 
   const provided = signature.transmissionSig || headers.get("x-pactflow-signature") || "";

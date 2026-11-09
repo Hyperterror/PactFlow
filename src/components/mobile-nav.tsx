@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 
 const LINKS = [
   { href: "/briefs", label: "Briefs", match: ["/briefs", "/quotations"] },
+  { href: "/engagements", label: "Engagements", match: ["/engagements"] },
   { href: "/agreements", label: "Agreements", match: ["/agreements"] },
   { href: "/delivery", label: "Delivery", match: ["/delivery"] },
   { href: "/collaboration", label: "Collaboration", match: ["/collaboration"] },

@@ -43,6 +43,8 @@ export interface ProposalRow {
   status: string;
   scopeLabel: string | null;
   scopeRationale: string | null;
+  scopeEvidence: Array<{ ref: string; relation: string; text: string; matchedTerms: string[] }>;
+  scopeBaseline: string | null;
   responseDeadline: string;
   reminderSentAt: string | null;
   submitterId: string;
@@ -50,6 +52,13 @@ export interface ProposalRow {
   createdAt: string;
   votes: ProposalVote[];
 }
+
+const EVIDENCE_LABELS: Record<string, string> = {
+  COVERED_BY: "covers this",
+  EXCLUDED_BY: "explicitly excludes this",
+  PARTIALLY_COVERED_BY: "partly covers this",
+  NEAREST_TERM: "closest item checked",
+};
 
 const MAX_DEADLINE_DAYS = 30;
 const MIN_DEADLINE_DAYS = 1;
@@ -333,10 +342,27 @@ export function DiscussionRoom({
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{proposal.proposal}</p>
 
                         {proposal.scopeRationale ? (
-                          <p className="mt-2 rounded-md bg-surface-muted px-2 py-1.5 text-xs leading-relaxed text-muted">
-                            <span className="font-semibold">AI classification (advisory):</span>{" "}
-                            {proposal.scopeRationale}
-                          </p>
+                          <div className="mt-2 rounded-md bg-surface-muted px-2 py-1.5 text-xs leading-relaxed text-muted">
+                            <p>
+                              <span className="font-semibold">AI classification (advisory)</span>
+                              {proposal.scopeBaseline ? ` · judged against ${proposal.scopeBaseline}` : ""}:{" "}
+                              {proposal.scopeRationale}
+                            </p>
+                            {proposal.scopeEvidence.length > 0 ? (
+                              <ul className="mt-1.5 space-y-1" aria-label="Evidence">
+                                {proposal.scopeEvidence.map((entry) => (
+                                  <li key={`${entry.relation}-${entry.ref}`}>
+                                    <span className="font-mono font-semibold text-foreground">{entry.ref}</span>{" "}
+                                    <span className="font-medium">{EVIDENCE_LABELS[entry.relation] ?? humanize(entry.relation)}</span>
+                                    {entry.text ? <> — {entry.text}</> : null}
+                                    {entry.matchedTerms.length > 0 ? (
+                                      <span className="block text-[11px]">matched: {entry.matchedTerms.join(", ")}</span>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
                         ) : null}
 
                         <ul className="mt-2 space-y-1 text-xs">

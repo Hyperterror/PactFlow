@@ -83,7 +83,11 @@ describe("Property 8 — scope-label coverage", () => {
     );
     fc.assert(
       fc.property(
-        fc.string({ minLength: DISPUTE_MAX_LENGTH + 1, maxLength: DISPUTE_MAX_LENGTH + 50 }),
+        // The limit applies to the trimmed text, so a mostly-whitespace string is
+        // not "too long" — generate ones whose trimmed length really exceeds it.
+        fc
+          .string({ minLength: DISPUTE_MAX_LENGTH + 1, maxLength: DISPUTE_MAX_LENGTH + 50 })
+          .filter((value) => value.trim().length > DISPUTE_MAX_LENGTH),
         (long) => {
           expect(validateDisputeJustification(long).length).toBeGreaterThan(0);
         },

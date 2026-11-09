@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError } from "@/lib/errors";
 import { assertOwnedByFreelancer, assertEditable, type LineItem } from "@/lib/quotations";
 import { submittedQuotationAverage } from "@/lib/ai/quotation";
 import {
+  BASELINE_RATE_CARD_SOURCE,
   heuristicPricingRecommendation,
   type HeuristicPricingInput,
 } from "@/lib/ai/heuristic";
@@ -58,7 +59,11 @@ function storedRecommendation(item: LineItem): PricingRecommendation | null {
     priceRangeMax: max,
     pricingConfidence: item.pricingConfidence,
     rationale: item.rationale,
-    basis: item.marketBenchmarkSource ? "MARKET_BENCHMARK" : "BRIEF_BUDGET",
+    basis: !item.marketBenchmarkSource
+      ? "BRIEF_BUDGET"
+      : item.marketBenchmarkSource === BASELINE_RATE_CARD_SOURCE
+        ? "BASELINE_ESTIMATE"
+        : "MARKET_BENCHMARK",
     marketBenchmarkSource: item.marketBenchmarkSource,
     insufficientData: item.insufficientData === true,
   };

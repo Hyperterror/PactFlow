@@ -186,6 +186,8 @@ export function toPaymentDto(payment: Payment) {
     amountCaptured: payment.amountCaptured === null ? null : Number(payment.amountCaptured),
     currency: payment.currency,
     paypalOrderId: payment.paypalOrderId,
+    paypalCaptureId: payment.paypalCaptureId,
+    currencyCaptured: payment.currencyCaptured,
     approveUrl: payment.approveUrl,
     capturedAt: payment.capturedAt?.toISOString() ?? null,
     reviewFlag: payment.reviewFlag,

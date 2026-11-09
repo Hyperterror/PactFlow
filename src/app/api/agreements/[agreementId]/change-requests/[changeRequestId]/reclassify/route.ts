@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { assertCanReclassify } from "@/lib/change-requests";
 import { classifyChangeRequest } from "@/lib/ai/scope-classification";
 import { prisma } from "@/lib/prisma";
+import { readStoredEvidence } from "@/lib/ai/scope-baseline";
 
 type Params = { params: Promise<{ agreementId: string; changeRequestId: string }> };
 
@@ -24,6 +25,8 @@ export const POST = handler(async (_req: NextRequest, { params }: Params) => {
   return json({
     scopeLabel: changeRequest.scopeLabel,
     scopeRationale: changeRequest.scopeRationale,
+    scopeEvidence: readStoredEvidence(changeRequest.scopeEvidence),
+    scopeBaseline: changeRequest.scopeBaseline,
     scopeClassifiedAt: changeRequest.scopeClassifiedAt?.toISOString() ?? null,
     status: changeRequest.status,
     timedOut: result.timedOut,

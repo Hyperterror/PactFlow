@@ -8,6 +8,7 @@ import { listOwnQuotations, listQuotationsForBrief, quotationTotal } from "@/lib
 import { BriefLifecycleActions, InviteFreelancerForm } from "./brief-actions";
 import { buttonClass, Card, CardBody, CardHeader, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
 import { asStringArray } from "@/lib/serializers";
+import { findOpenEngagementForBrief } from "@/lib/engagements";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 
 type Params = { params: Promise<{ briefId: string }> };
@@ -57,6 +58,14 @@ export default async function BriefDetailPage({ params }: Params) {
         submittedAt: quotation.submittedAt ? quotation.submittedAt.toISOString() : null,
       }));
 
+  // Only the two selected parties may see the engagement; another candidate
+  // learns nothing about who was chosen.
+  const openEngagement = await findOpenEngagementForBrief(briefId);
+  const engagement =
+    openEngagement && (openEngagement.clientId === user.id || openEngagement.freelancerId === user.id)
+      ? openEngagement
+      : null;
+
   const deliverables = asStringArray(brief.deliverables);
   const submitted = quotationRows.filter((quotation) => quotation.submittedAt !== null);
   const canCompare = isClient && submitted.length >= 2;
@@ -85,7 +94,23 @@ export default async function BriefDetailPage({ params }: Params) {
         actions={isClient ? <BriefLifecycleActions briefId={brief.id} status={brief.status} /> : null}
       />
 
-      {canCompare ? (
+      {engagement ? (
+        <Card className="mb-5 border-primary/30 bg-primary-soft p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-primary">A proposal is selected — engagement in progress</p>
+              <p className="mt-0.5 text-xs text-primary/80">
+                Discovery, requirements and the SOW happen there before any agreement exists.
+              </p>
+            </div>
+            <Link href={`/engagements/${engagement.id}`} className={buttonClass("primary", "sm")}>
+              Open engagement
+            </Link>
+          </div>
+        </Card>
+      ) : null}
+
+      {canCompare && !engagement ? (
         <Card className="mb-5 border-primary/30 bg-primary-soft p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

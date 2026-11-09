@@ -1,170 +1,15 @@
 import type { Agreement, AgreementVersion, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { withTransaction, writeAuditLog, type TxClient } from "@/lib/audit";
 import { AGREEMENT_TRANSITIONS, assertTransition } from "@/lib/state";
-import { assertAgreementParticipant, recordAccessViolation } from "@/lib/access";
+import { assertAgreementParticipant } from "@/lib/access";
 import { send } from "@/lib/notifications";
 import { nextVersionNumber, isDualApproved, approvalSummary } from "@/lib/agreements/invariants";
-import { quotationTotal } from "@/lib/quotations";
-import { asStringArray } from "@/lib/serializers";
 import { completeProject } from "@/lib/collaboration";
 
-export interface AgreementSnapshot {
-  quotationId: string;
-  briefId: string;
-  title: string;
-  description: string;
-  deliverables: string[];
-  budgetMin: number;
-  budgetMax: number;
-  lineItems: unknown;
-  total: number;
-  timelineDays: number;
-  notes: string;
-  currency: string;
-  capturedAt: string;
-}
-
-export async function buildSnapshotFromQuotation(
-  tx: TxClient,
-  quotationId: string,
-  currency = "USD",
-): Promise<AgreementSnapshot> {
-  const quotation = await tx.quotation.findUnique({
-    where: { id: quotationId },
-    include: { brief: true },
-  });
-  if (!quotation) throw new NotFoundError("Quotation");
-  return {
-    quotationId,
-    briefId: quotation.briefId,
-    title: quotation.brief.title,
-    description: quotation.brief.description,
-    deliverables: asStringArray(quotation.brief.deliverables),
-    budgetMin: Number(quotation.brief.budgetMin),
-    budgetMax: Number(quotation.brief.budgetMax),
-    lineItems: quotation.lineItems,
-    total: quotationTotal(quotation.lineItems),
-    timelineDays: quotation.timelineDays,
-    notes: quotation.notes,
-    currency,
-    capturedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Requirement 9.1/9.2 — accepting a Quotation creates the Agreement plus an
- * immutable Agreement Version 1 snapshot authored by the Platform on behalf of
- * the accepting Client.
- */
-export async function createAgreementFromQuotation(
-  quotationId: string,
-  clientId: string,
-): Promise<Agreement> {
-  const quotation = await prisma.quotation.findUnique({
-    where: { id: quotationId },
-    include: { brief: true },
-  });
-  if (!quotation) throw new NotFoundError("Quotation");
-
-  if (quotation.brief.clientId !== clientId) {
-    await recordAccessViolation({
-      actorId: clientId,
-      resourceId: quotationId,
-      resourceType: "Quotation",
-      reason: "NOT_BRIEF_OWNER",
-    });
-    throw new ForbiddenError("NOT_BRIEF_OWNER", "Only the owning Client may accept this quotation.");
-  }
-  if (quotation.status !== "SUBMITTED" && quotation.status !== "SHORTLISTED" && quotation.status !== "UNDER_REVIEW") {
-    throw new ConflictError(
-      "QUOTATION_NOT_ACCEPTABLE",
-      "Only submitted quotations can be accepted.",
-      quotation.status,
-    );
-  }
-
-  const existing = await prisma.agreement.findFirst({ where: { quotationId } });
-  if (existing) {
-    throw new ConflictError("AGREEMENT_EXISTS", "An agreement already exists for this quotation.", existing.status);
-  }
-
-  return withTransaction(async (tx) => {
-    const agreement = await tx.agreement.create({
-      data: {
-        briefId: quotation.briefId,
-        quotationId,
-        clientId,
-        freelancerId: quotation.freelancerId,
-        status: "PENDING_APPROVAL",
-        currentVersion: 1,
-        currency: "USD",
-        startDate: new Date(),
-      },
-    });
-
-    const snapshot = await buildSnapshotFromQuotation(tx, quotationId, "USD");
-    const version = await tx.agreementVersion.create({
-      data: {
-        agreementId: agreement.id,
-        versionNumber: 1,
-        content: snapshot as unknown as Prisma.InputJsonValue,
-        authorId: clientId,
-        authorRole: "PLATFORM",
-      },
-    });
-
-    // Both parties start PENDING for version 1.
-    for (const [actorId, actorRole] of [
-      [agreement.clientId, "CLIENT"],
-      [agreement.freelancerId, "FREELANCER"],
-    ] as const) {
-      await tx.agreementApproval.create({
-        data: {
-          agreementId: agreement.id,
-          versionId: version.id,
-          versionNumber: 1,
-          actorId,
-          actorRole,
-          state: "PENDING",
-        },
-      });
-    }
-
-    await tx.quotation.update({ where: { id: quotationId }, data: { status: "ACCEPTED" } });
-
-    await writeAuditLog(tx, {
-      eventType: "AGREEMENT_CREATED",
-      actorId: clientId,
-      resourceId: agreement.id,
-      resourceType: "Agreement",
-      previousState: null,
-      newState: "PENDING_APPROVAL",
-      metadata: { quotationId, versionNumber: 1 },
-    });
-    await writeAuditLog(tx, {
-      eventType: "AGREEMENT_VERSION_CREATED",
-      actorId: clientId,
-      resourceId: agreement.id,
-      resourceType: "Agreement",
-      previousState: null,
-      newState: "VERSION_1",
-      metadata: { versionNumber: 1, authorRole: "PLATFORM" },
-    });
-
-    await send(
-      {
-        userId: agreement.freelancerId,
-        type: "AGREEMENT_READY",
-        payload: { agreementId: agreement.id, briefId: agreement.briefId, versionNumber: 1 },
-      },
-      tx,
-    );
-
-    return agreement;
-  });
-}
+// Agreements are created from an approved requirements baseline and SOW by
+// `submitSow` in @/lib/engagements; there is no quotation-to-agreement shortcut.
 
 /**
  * Requirements 9.3/9.4 — both parties must approve the SAME version before the
@@ -316,6 +161,8 @@ export async function createNewVersion(
         content: merged as unknown as Prisma.InputJsonValue,
         authorId: actorId,
         authorRole: context.role,
+        // An amendment keeps pointing at the requirements baseline it amends.
+        requirementsVersionId: latest.requirementsVersionId,
       },
     });
 

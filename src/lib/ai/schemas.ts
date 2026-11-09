@@ -33,7 +33,9 @@ export const PricingRecommendationSchema = z.object({
   priceRangeMax: z.number().min(0).optional(),
   pricingConfidence: z.enum(["LOW", "MEDIUM", "HIGH"]),
   rationale: z.string().min(10).max(1000),
-  basis: z.enum(["BRIEF_BUDGET", "HISTORY", "MARKET_BENCHMARK"]),
+  // BASELINE_ESTIMATE is PactFlow's own neutral rate card. MARKET_BENCHMARK is
+  // reserved for a sourced benchmark dataset, which the platform does not have yet.
+  basis: z.enum(["BRIEF_BUDGET", "HISTORY", "BASELINE_ESTIMATE", "MARKET_BENCHMARK"]),
   marketBenchmarkSource: z.string().max(300).optional(),
   insufficientData: z.boolean(),
 });

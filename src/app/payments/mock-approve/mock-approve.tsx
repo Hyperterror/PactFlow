@@ -39,12 +39,14 @@ export function MockApprove({ token }: { token: string }) {
 
       <div className="rounded-card border border-border-base bg-surface p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-lg font-semibold tracking-tight text-[#003087]">PayPal</span>
-          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">Sandbox</span>
+          <span className="text-lg font-semibold tracking-tight text-[#003087]">PayPal checkout simulator</span>
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">Mock mode</span>
         </div>
 
         <p className="mt-6 text-sm text-muted">
-          PactFlow is asking you to authorise one milestone payment. No real money moves in sandbox mode.
+          This is PactFlow&apos;s local stand-in for PayPal, used when no Sandbox credentials are configured. It
+          returns Orders v2-shaped responses, and the backend still verifies the capture amount and currency
+          before releasing the file. Set PAYPAL_MODE=sandbox to use real PayPal Sandbox checkout.
         </p>
 
         <dl className="mt-4 space-y-2 text-sm">

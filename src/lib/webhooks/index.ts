@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSystemActorId, withTransaction, writeAuditLog } from "@/lib/audit";
 import { verifyWebhookSignature } from "@/lib/webhooks/verifier";
 import { reconcileCapturedPayment } from "@/lib/payments";
 import { maybeCompleteAgreement } from "@/lib/agreements";
+import { reconcilePayoutWebhook, releasePayoutForPayment } from "@/lib/payouts";
 
 export type WebhookAction = "processed" | "duplicate" | "ignored" | "rejected";
 
@@ -20,6 +21,7 @@ interface PayPalEventShape {
   event_type?: string;
   resource?: {
     id?: string;
+    status?: string;
     amount?: { value?: string; currency_code?: string };
     supplementary_data?: { related_ids?: { order_id?: string } };
   };
@@ -56,11 +58,21 @@ export async function handleWebhookEvent(
   const eventId = (parsed && typeof payload.id === "string" && payload.id) || fallbackEventId(rawBody);
   const eventType = (parsed && typeof payload.event_type === "string" && payload.event_type) || "UNKNOWN";
 
-  // Requirement 18.3 — bad signatures never touch application state.
+  // Verification could not be completed (PayPal unreachable, 5xx). Nothing is
+  // stored, so the event id stays free and PayPal's own retry gets a clean run.
+  if (!verification.valid && verification.retryable) {
+    console.warn(`[webhook] verification unavailable eventId=${eventId} reason=${verification.reason ?? ""}`);
+    return { status: 503, action: "rejected", eventId, reason: verification.reason };
+  }
+
+  // Requirement 18.3 — bad signatures never touch application state. The row is
+  // kept for the operator log under its own key: the real event id is reserved
+  // for verified deliveries, otherwise a forged or garbled copy that arrived
+  // first would make the genuine event look like a duplicate.
   if (!verification.valid) {
     console.warn(`[webhook] rejected eventId=${eventId} reason=${verification.reason ?? "invalid signature"}`);
     await persistEvent({
-      paypalEventId: eventId,
+      paypalEventId: `rejected_${eventId}_${randomUUID()}`,
       eventType,
       rawPayload: parsed ? (payload as Prisma.InputJsonValue) : { raw: rawBody.slice(0, 5000) },
       signatureVerified: false,
@@ -147,20 +159,43 @@ async function persistEvent(data: {
   });
 }
 
-async function dispatchEvent(eventType: string, payload: PayPalEventShape): Promise<boolean> {
-  if (eventType !== "PAYMENT.CAPTURE.COMPLETED") return false;
+const CAPTURE_EVENTS = new Set(["PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.DENIED"]);
 
-  const orderId = payload.resource?.supplementary_data?.related_ids?.order_id;
-  const amount = payload.resource?.amount?.value;
-  const currency = payload.resource?.amount?.currency_code ?? "USD";
-  if (!orderId || !amount) {
-    throw new Error("PAYMENT.CAPTURE.COMPLETED payload is missing order id or amount");
+/** PAYMENT.PAYOUTS-ITEM.SUCCEEDED / FAILED / UNCLAIMED / RETURNED / BLOCKED / ... */
+const PAYOUT_ITEM_PREFIX = "PAYMENT.PAYOUTS-ITEM.";
+
+interface PayoutItemResource {
+  payout_item_id?: string;
+  payout_batch_id?: string;
+  transaction_status?: string;
+}
+
+async function dispatchEvent(eventType: string, payload: PayPalEventShape): Promise<boolean> {
+  if (eventType.startsWith(PAYOUT_ITEM_PREFIX)) {
+    const resource = (payload.resource ?? {}) as PayoutItemResource;
+    return reconcilePayoutWebhook({
+      eventType,
+      payoutItemId: resource.payout_item_id ?? null,
+      payoutBatchId: resource.payout_batch_id ?? null,
+      transactionStatus: resource.transaction_status ?? null,
+    });
+  }
+  if (!CAPTURE_EVENTS.has(eventType)) return false;
+
+  const resource = payload.resource ?? {};
+  const orderId = resource.supplementary_data?.related_ids?.order_id ?? null;
+  const captureId = resource.id ?? null;
+  if (!orderId && !captureId) {
+    throw new Error(`${eventType} payload carries neither an order id nor a capture id`);
   }
 
   const { payment, changed } = await reconcileCapturedPayment({
     paypalOrderId: orderId,
-    amount,
-    currency,
+    captureId,
+    // The event type is authoritative for the capture outcome.
+    status: eventType === "PAYMENT.CAPTURE.DENIED" ? "DECLINED" : "COMPLETED",
+    amount: resource.amount?.value ?? null,
+    currency: resource.amount?.currency_code ?? null,
     raw: payload,
   });
 
@@ -169,6 +204,7 @@ async function dispatchEvent(eventType: string, payload: PayPalEventShape): Prom
     return true;
   }
   if (changed && payment.status === "CAPTURED") {
+    await releasePayoutForPayment(payment.id);
     await maybeCompleteAgreement(await agreementIdFor(payment.milestoneId));
   }
   return true;

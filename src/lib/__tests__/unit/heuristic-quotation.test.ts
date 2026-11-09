@@ -180,7 +180,8 @@ describe("pricing recommendation heuristic (Requirements 5.1-5.7)", () => {
 
   it("labels the baseline rate card when nothing else is available", () => {
     const result = heuristicPricingRecommendation({ description: "Landing page" });
-    expect(result.basis).toBe("MARKET_BENCHMARK");
+    // A neutral rate card is an estimate, never presented as market evidence.
+    expect(result.basis).toBe("BASELINE_ESTIMATE");
     expect(result.insufficientData).toBe(true);
     expect(result.marketBenchmarkSource).toBe(BASELINE_RATE_CARD_SOURCE);
     expect(result.recommendedPrice).toBeGreaterThan(0);

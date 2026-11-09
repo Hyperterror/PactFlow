@@ -26,6 +26,9 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/webhooks",
   "/api/files/signed",
+  // Vendored stylesheets and icon fonts. They carry no user data, and a
+  // <link rel="stylesheet"> cannot send a session cookie the way a fetch can.
+  "/api/vendor",
   // The cron endpoint authenticates itself with a shared bearer secret.
   "/api/cron",
   "/_next",
