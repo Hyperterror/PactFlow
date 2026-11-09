@@ -41,18 +41,21 @@ services:
         generateValue: true
       - key: PAYPAL_WEBHOOK_SECRET
         generateValue: true
-      # "mock" runs the whole payment lifecycle against the local simulator, so
-      # the demo works with no PayPal credentials at all.
+      # Sandbox mode calls real PayPal APIs (Orders v2, Payouts, Webhook Verification).
       - key: PAYPAL_MODE
-        value: mock
+        value: sandbox
       # Public URL of the service, e.g. https://pactflow.onrender.com. Prompted
       # on first deploy because it is only known once the service exists.
       - key: APP_URL
         sync: false
-      # Optional: leave unset to keep the deterministic heuristic AI engine.
+      # GroqCloud LLM configuration (OpenAI-compatible chat completions)
       - key: LLM_API_KEY
         sync: false
-      # Optional: set together with PAYPAL_MODE=sandbox to call the real API.
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-20b
+      # PayPal Sandbox credentials
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
