@@ -7,6 +7,10 @@ import { listRevisionRequests } from "@/lib/deliverables/review";
 import { Alert, Badge, buttonClass, Card, CardBody, CardHeader, KeyValue, PageHeader, StatusBadge } from "@/components/ui";
 import { formatBytes, formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { DeliveryActions } from "./delivery-actions";
+import { getPayoutForMilestone, toPayoutDto } from "@/lib/payouts";
+import { isMockMode } from "@/lib/payments/paypal-client";
+import { prisma } from "@/lib/prisma";
+import { PayoutAccountForm, PayoutStatusPanel } from "@/components/payout-panel";
 
 type Params = { params: Promise<{ milestoneId: string }> };
 
@@ -26,6 +30,8 @@ export default async function DeliveryRoomPage({ params }: Params) {
   const latest = deliverables[0] ?? null;
   const revisions = latest ? await listRevisionRequests(latest.id) : [];
   const paymentCaptured = payment?.status === "CAPTURED";
+  const payout = await getPayoutForMilestone(milestone.id);
+  const viewer = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { paypalPayoutEmail: true } });
   const originalUnlocked = role === "FREELANCER" || paymentCaptured;
 
   return (
@@ -221,6 +227,32 @@ export default async function DeliveryRoomPage({ params }: Params) {
               ) : (
                 <p className="text-sm text-muted">No payment started for this milestone.</p>
               )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Freelancer payout"
+              description="After the Client's capture is verified, PayPal Payouts sends the Freelancer's share."
+            />
+            <CardBody className="space-y-4">
+              {payout ? (
+                <PayoutStatusPanel
+                  payout={toPayoutDto(payout)}
+                  viewerRole={role}
+                  hasPayoutEmail={Boolean(viewer.paypalPayoutEmail)}
+                  mockMode={isMockMode()}
+                />
+              ) : (
+                <p className="text-sm text-muted">
+                  {payment?.status === "REVIEW_REQUIRED"
+                    ? "Held: the payment needs a manual review, so nothing is paid out."
+                    : "Nothing to pay out until the milestone payment is captured and verified."}
+                </p>
+              )}
+              {role === "FREELANCER" && (!viewer.paypalPayoutEmail || payout?.status === "AWAITING_RECEIVER" || payout?.status === "FAILED") ? (
+                <PayoutAccountForm initialEmail={viewer.paypalPayoutEmail} />
+              ) : null}
             </CardBody>
           </Card>
 

@@ -40,6 +40,7 @@ const TABLES = [
   "ComparisonWorkspace",
   "SignedUrlEvent",
   "RevisionRequest",
+  "Payout",
   "Payment",
   "Deliverable",
   "Milestone",
@@ -53,6 +54,11 @@ const TABLES = [
   "DiscussionMessage",
   "AgreementApproval",
   "AgreementVersion",
+  "RequirementsComment",
+  "RequirementsApproval",
+  "RequirementsVersion",
+  "EngagementMessage",
+  "Engagement",
   "Agreement",
   "QuotationComment",
   "Quotation",
@@ -141,6 +147,9 @@ async function main() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const client = await createUser(CLIENT_EMAIL, "Northwind Studio", passwordHash);
   const freelancer = await createUser(FREELANCER_EMAIL, "Ada Lovelace", passwordHash);
+  // Ada can be paid out immediately; Grace has no payout email yet, which shows
+  // the "waiting for payout email" path.
+  await prisma.user.update({ where: { id: freelancer.id }, data: { paypalPayoutEmail: FREELANCER_EMAIL } });
   const secondFreelancer = await createUser(SECOND_FREELANCER_EMAIL, "Grace Hopper", passwordHash);
 
   // ── Scenario 1: an open brief with two quotations in comparison ────────────
@@ -179,9 +188,9 @@ async function main() {
       freelancerId: freelancer.id,
       status: "SUBMITTED",
       lineItems: [
-        { description: "Discovery and IA", quantity: 1, unitPrice: 900 },
-        { description: "Design system", quantity: 1, unitPrice: 2100 },
-        { description: "Homepage and pricing build", quantity: 1, unitPrice: 1800 },
+        { description: "Discovery and IA", price: 900 },
+        { description: "Design system", price: 2100 },
+        { description: "Homepage and pricing build", price: 1800 },
       ] as object,
       timelineDays: 21,
       notes: "Two review rounds included. Content migrations are quoted separately.",
@@ -195,8 +204,8 @@ async function main() {
       freelancerId: secondFreelancer.id,
       status: "SUBMITTED",
       lineItems: [
-        { description: "Full rebuild in one sprint", quantity: 1, unitPrice: 3300 },
-        { description: "Accessibility audit", quantity: 1, unitPrice: 600 },
+        { description: "Full rebuild in one sprint", price: 3300 },
+        { description: "Accessibility audit", price: 600 },
       ] as object,
       timelineDays: 30,
       notes: "Single fixed-price sprint. Includes a written accessibility report.",
@@ -467,8 +476,8 @@ async function main() {
       freelancerId: freelancer.id,
       status: "ACCEPTED",
       lineItems: [
-        { description: "Launch page", quantity: 1, unitPrice: 2400 },
-        { description: "Press kit", quantity: 1, unitPrice: 600 },
+        { description: "Launch page", price: 2400 },
+        { description: "Press kit", price: 600 },
       ] as object,
       timelineDays: 14,
       notes: "Two revision rounds included.",

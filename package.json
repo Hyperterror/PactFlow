@@ -27,6 +27,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",
     "@aws-sdk/s3-request-presigner": "^3.1161.0",
+    "@bryntum/gantt-enterprise": "^8.0.0",
     "@prisma/client": "^6.19.3",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",

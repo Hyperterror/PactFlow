@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { handler, json, parseJson } from "@/lib/http";
 import { requireSession } from "@/lib/auth/session";
 import { SubmitChangeRequestSchema, listChangeRequests, submitChangeRequest } from "@/lib/change-requests";
+import { readStoredEvidence } from "@/lib/ai/scope-baseline";
 
 type Params = { params: Promise<{ agreementId: string }> };
 
@@ -18,6 +19,8 @@ export const GET = handler(async (_req: NextRequest, { params }: Params) => {
       status: changeRequest.status,
       scopeLabel: changeRequest.scopeLabel,
       scopeRationale: changeRequest.scopeRationale,
+      scopeEvidence: readStoredEvidence(changeRequest.scopeEvidence),
+      scopeBaseline: changeRequest.scopeBaseline,
       responseDeadline: changeRequest.responseDeadline.toISOString(),
       reminderSentAt: changeRequest.reminderSentAt?.toISOString() ?? null,
       submitterId: changeRequest.submitterId,

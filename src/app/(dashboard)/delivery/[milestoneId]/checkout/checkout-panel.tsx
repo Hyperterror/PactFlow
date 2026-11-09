@@ -17,12 +17,20 @@ export function CheckoutPanel({
   currency,
   milestoneStatus,
   payment,
+  mockMode,
 }: {
   milestoneId: string;
   amount: number;
   currency: string;
   milestoneStatus: string;
-  payment: { id: string; status: string; approveUrl: string | null; orderId: string | null } | null;
+  payment: {
+    id: string;
+    status: string;
+    approveUrl: string | null;
+    orderId: string | null;
+    captureId: string | null;
+  } | null;
+  mockMode: boolean;
 }) {
   const refresh = useServerRefresh();
   const [busy, setBusy] = useState<string | null>(null);
@@ -49,7 +57,9 @@ export function CheckoutPanel({
   }
 
   const captured = payment?.status === "CAPTURED";
-  const payable = milestoneStatus === "APPROVED" && !captured;
+  // PayPal accepted the capture but has not settled it; the webhook finishes it.
+  const settling = payment?.status === "PENDING" && Boolean(payment.captureId);
+  const payable = milestoneStatus === "APPROVED" && !captured && !settling;
 
   return (
     <div className="space-y-4">
@@ -69,6 +79,9 @@ export function CheckoutPanel({
         {payment?.orderId ? (
           <p className="mt-3 font-mono text-xs text-muted">Order {payment.orderId}</p>
         ) : null}
+        {payment?.captureId ? (
+          <p className="mt-1 font-mono text-xs text-muted">Capture {payment.captureId}</p>
+        ) : null}
       </div>
 
       {captured ? (
@@ -78,7 +91,27 @@ export function CheckoutPanel({
         </Alert>
       ) : null}
 
-      {!payable && !captured ? (
+      {settling ? (
+        <Alert tone="warning" title="PayPal is settling this payment">
+          The capture was accepted but is still pending at PayPal. The file unlocks automatically once PayPal confirms
+          it.
+        </Alert>
+      ) : null}
+
+      {payment?.status === "FAILED" ? (
+        <Alert tone="danger" title="Payment declined">
+          PayPal declined the last attempt and nothing was charged. Pay again to choose another funding source.
+        </Alert>
+      ) : null}
+
+      {payment?.status === "REVIEW_REQUIRED" ? (
+        <Alert tone="warning" title="Held for review">
+          The captured amount or currency did not match the agreement, so the file stays locked until an operator
+          resolves it.
+        </Alert>
+      ) : null}
+
+      {!payable && !captured && !settling ? (
         <Alert tone="info">
           Payment opens once the Client approves the delivered milestone. Current milestone state:{" "}
           <span className="font-medium">{milestoneStatus.toLowerCase().replaceAll("_", " ")}</span>.
@@ -86,7 +119,7 @@ export function CheckoutPanel({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {payable ? (
+        {payable && payment?.status !== "REVIEW_REQUIRED" ? (
           <button
             type="button"
             className={buttonClass("primary", "md")}
@@ -101,7 +134,7 @@ export function CheckoutPanel({
           </button>
         ) : null}
 
-        {payment && (payment.status === "FAILED" || payment.status === "REVIEW_REQUIRED") ? (
+        {payment?.status === "REVIEW_REQUIRED" ? (
           <button
             type="button"
             className={buttonClass("secondary", "md")}
@@ -118,8 +151,9 @@ export function CheckoutPanel({
       </div>
 
       <p className="text-xs leading-relaxed text-muted">
-        Payments run against PayPal Orders v2. In sandbox mode the approve step is served by the local mock checkout so
-        the whole flow stays reproducible without a PayPal account.
+        {mockMode
+          ? "Mock mode: the approve step is served by a local stand-in for PayPal so the flow runs without an account. Set PAYPAL_MODE=sandbox with credentials to use PayPal Sandbox."
+          : "Payments run against the PayPal Orders v2 Sandbox. You approve on PayPal, return here, and the capture is confirmed server-side before the file unlocks."}
       </p>
     </div>
   );

@@ -9,6 +9,7 @@ import { checkOverdueMilestones } from "@/lib/milestones";
 import { expireStaleChangeRequests } from "@/lib/change-requests";
 import { remindStaleDeliverables } from "@/lib/deliverables/review";
 import { deliverPending } from "@/lib/notifications";
+import { refreshPendingPayouts } from "@/lib/payouts";
 
 /**
  * Scheduled maintenance entry point for the three cron functions plus the
@@ -50,6 +51,7 @@ async function runJobs() {
   const changeRequests = await expireStaleChangeRequests(now);
   const staleDeliverableReminders = await remindStaleDeliverables(now);
   const notificationsDelivered = await deliverPending();
+  const payoutsRefreshed = await refreshPendingPayouts();
 
   return {
     ranAt: now.toISOString(),
@@ -59,6 +61,7 @@ async function runJobs() {
       changeRequestsExpired: changeRequests.expired,
       staleDeliverableReminders,
       notificationsDelivered,
+      payoutsRefreshed,
     },
   };
 }

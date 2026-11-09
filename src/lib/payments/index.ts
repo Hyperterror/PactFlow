@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { releasePayoutForPayment } from "@/lib/payouts";
 import { randomUUID } from "node:crypto";
 import type { Payment } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -6,7 +7,7 @@ import { ConflictError, ForbiddenError, ExternalServiceError, NotFoundError } fr
 import { withTransaction, writeAuditLog } from "@/lib/audit";
 import { PAYMENT_TRANSITIONS, assertTransition } from "@/lib/state";
 import { assertAgreementParticipant, recordAccessViolation } from "@/lib/access";
-import { captureOrder, createOrder, PayPalError } from "@/lib/payments/paypal-client";
+import { captureOrder, createOrder, PayPalError, type PayPalCapture } from "@/lib/payments/paypal-client";
 import { send } from "@/lib/notifications";
 import { notifyOperators } from "@/lib/storage/signed-url";
 import { maybeCompleteAgreement } from "@/lib/agreements";
@@ -27,6 +28,58 @@ export function amountsEqual(a: string | number, b: string | number): boolean {
 
 export function formatUsd(value: Prisma.Decimal | number | string): string {
   return new Prisma.Decimal(value).toFixed(2);
+}
+
+export type CaptureOutcome =
+  | { kind: "CAPTURED" }
+  | { kind: "PENDING"; reason: string }
+  | { kind: "FAILED"; reason: string }
+  | { kind: "REVIEW"; reason: "AMOUNT_MISMATCH" | "CURRENCY_MISMATCH" | "CAPTURE_MISSING"; detail: string };
+
+/**
+ * Requirement 17.3/17.5 — the single decision on what a capture response means.
+ *
+ * Only a capture whose own status is COMPLETED, for exactly the expected amount
+ * AND currency, unlocks the file. A PENDING capture waits for the
+ * PAYMENT.CAPTURE.COMPLETED webhook; a DECLINED/FAILED capture fails the attempt;
+ * anything that cannot be reconciled goes to manual review.
+ */
+export function evaluateCapture(
+  capture: Pick<PayPalCapture, "status" | "amount" | "currency" | "captureId" | "statusReason">,
+  expected: { amount: string; currency: string },
+): CaptureOutcome {
+  switch (capture.status) {
+    case "COMPLETED":
+      break;
+    case "PENDING":
+      return { kind: "PENDING", reason: capture.statusReason ?? "CAPTURE_PENDING" };
+    case "DECLINED":
+    case "FAILED":
+      return { kind: "FAILED", reason: capture.statusReason ?? `CAPTURE_${capture.status}` };
+    case "MISSING":
+      return { kind: "REVIEW", reason: "CAPTURE_MISSING", detail: "PayPal returned no capture for this order." };
+    default:
+      return { kind: "REVIEW", reason: "CAPTURE_MISSING", detail: `Unexpected capture status ${capture.status}.` };
+  }
+
+  if (!capture.captureId || capture.amount === null || capture.currency === null) {
+    return { kind: "REVIEW", reason: "CAPTURE_MISSING", detail: "Completed capture is missing its id or amount." };
+  }
+  if (capture.currency.toUpperCase() !== expected.currency.toUpperCase()) {
+    return {
+      kind: "REVIEW",
+      reason: "CURRENCY_MISMATCH",
+      detail: `Captured ${capture.amount} ${capture.currency} != expected ${expected.amount} ${expected.currency}`,
+    };
+  }
+  if (!amountsEqual(capture.amount, expected.amount)) {
+    return {
+      kind: "REVIEW",
+      reason: "AMOUNT_MISMATCH",
+      detail: `Captured ${capture.amount} ${capture.currency} != expected ${expected.amount} ${expected.currency}`,
+    };
+  }
+  return { kind: "CAPTURED" };
 }
 
 /**
@@ -67,7 +120,34 @@ export async function initiatePayment(milestoneId: string, clientId: string): Pr
     throw new ConflictError("ALREADY_PAID", "This milestone has already been paid.", existing.status);
   }
   if (existing?.paypalOrderId && existing.approveUrl) {
-    // Same attempt, same order, same key.
+    // Same attempt, same order, same key. A failed capture (declined card) sends
+    // the payer back through the same order, so the attempt reopens as PENDING.
+    if (existing.status === "FAILED") {
+      const reopened = await withTransaction(async (tx) => {
+        assertTransition(
+          PAYMENT_TRANSITIONS,
+          existing.status,
+          "PENDING",
+          "PAYMENT_NOT_RETRYABLE",
+          "This payment cannot be restarted from its current status.",
+        );
+        const updated = await tx.payment.update({
+          where: { id: existing.id },
+          data: { status: "PENDING", lastError: null },
+        });
+        await writeAuditLog(tx, {
+          eventType: "PAYMENT_INITIATED",
+          actorId: clientId,
+          resourceId: existing.id,
+          resourceType: "Payment",
+          previousState: existing.status,
+          newState: "PENDING",
+          metadata: { milestoneId, paypalOrderId: existing.paypalOrderId, reopened: true },
+        });
+        return updated;
+      });
+      return { payment: reopened, approveUrl: existing.approveUrl };
+    }
     return { payment: existing, approveUrl: existing.approveUrl };
   }
 
@@ -187,19 +267,25 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
   if (payment.status === "CAPTURED") {
     return { payment, captured: true, reviewRequired: false, reason: "ALREADY_CAPTURED" };
   }
+  if (payment.status === "FAILED") {
+    // A declined capture needs a fresh approval on the same order first; that
+    // goes through initiatePayment, which reopens the attempt as PENDING.
+    throw new ConflictError(
+      "PAYMENT_FAILED",
+      "This payment attempt was declined. Start it again with PayPal.",
+      payment.status,
+    );
+  }
   if (!payment.idempotencyKey) {
     console.error("[payments] idempotency key missing", { paymentId: payment.id });
     throw new ConflictError("IDEMPOTENCY_KEY_MISSING", "Cannot capture without the original idempotency key.");
   }
 
-  const expectedAmount = formatUsd(payment.amountExpected);
+  const expected = { amount: formatUsd(payment.amountExpected), currency: payment.currency };
 
-  let capture;
+  let capture: PayPalCapture;
   try {
-    capture = await captureOrder(paypalOrderId, payment.idempotencyKey, {
-      amount: expectedAmount,
-      currency: payment.currency,
-    });
+    capture = await captureOrder(paypalOrderId, payment.idempotencyKey, expected);
   } catch (error) {
     const detail = error instanceof PayPalError ? error.payload : error;
     console.error("[payments] capture failed", {
@@ -207,19 +293,21 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
       paypalOrderId,
       payload: detail,
     });
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: "PENDING", lastError: JSON.stringify(detail).slice(0, 2000) },
-    });
+    // The call itself failed, so nothing is known about the money: the status
+    // stays where it was and the stored key makes the retry safe.
     await withTransaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { lastError: JSON.stringify(detail ?? null).slice(0, 2000) },
+      });
       await writeAuditLog(tx, {
         eventType: "PAYMENT_FAILED",
         actorId,
         resourceId: payment.id,
         resourceType: "Payment",
         previousState: payment.status,
-        newState: "PENDING",
-        metadata: { paypalOrderId },
+        newState: payment.status,
+        metadata: { paypalOrderId, stage: "CAPTURE_CALL" },
       });
     });
     throw new ExternalServiceError(
@@ -228,33 +316,59 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
     );
   }
 
-  if (capture.status !== "COMPLETED") {
-    console.error("[payments] non-completed capture", { paymentId: payment.id, payload: capture.raw });
-    await prisma.payment.update({
+  const outcome = evaluateCapture(capture, expected);
+  const captureEvidence = {
+    paypalCaptureId: capture.captureId,
+    paypalStatus: capture.status,
+    amountCaptured: capture.amount,
+    currencyCaptured: capture.currency,
+    captureResponse: capture.raw as Prisma.InputJsonValue,
+  };
+
+  if (outcome.kind === "PENDING") {
+    // PayPal accepted the capture but has not settled it (e.g. eCheck, risk
+    // review). The PAYMENT.CAPTURE.COMPLETED webhook finishes the job.
+    console.warn("[payments] capture pending", { paymentId: payment.id, reason: outcome.reason });
+    const updated = await prisma.payment.update({
       where: { id: payment.id },
-      data: { status: "PENDING", lastError: `PayPal status: ${capture.status}` },
+      data: { ...captureEvidence, lastError: `Capture pending: ${outcome.reason}` },
     });
-    return {
-      payment: await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } }),
-      captured: false,
-      reviewRequired: false,
-      reason: capture.status,
-    };
+    return { payment: updated, captured: false, reviewRequired: false, reason: "CAPTURE_PENDING" };
   }
 
-  const amountMatches = amountsEqual(capture.amount, expectedAmount);
-  if (!amountMatches) {
+  if (outcome.kind === "FAILED") {
+    const failed = await withTransaction(async (tx) => {
+      assertTransition(
+        PAYMENT_TRANSITIONS,
+        payment.status,
+        "FAILED",
+        "PAYMENT_NOT_FAILABLE",
+        "This payment cannot be failed from its current status.",
+      );
+      const updated = await tx.payment.update({
+        where: { id: payment.id },
+        data: { ...captureEvidence, status: "FAILED", lastError: `Capture ${capture.status}: ${outcome.reason}` },
+      });
+      await writeAuditLog(tx, {
+        eventType: "PAYMENT_FAILED",
+        actorId,
+        resourceId: payment.id,
+        resourceType: "Payment",
+        previousState: payment.status,
+        newState: "FAILED",
+        metadata: { paypalOrderId, captureId: capture.captureId, reason: outcome.reason },
+      });
+      return updated;
+    });
+    return { payment: failed, captured: false, reviewRequired: false, reason: outcome.reason };
+  }
+
+  if (outcome.kind === "REVIEW") {
     // Requirement 17.5 — flag for manual review, never unlock the file.
     const flagged = await withTransaction(async (tx) => {
       const updated = await tx.payment.update({
         where: { id: payment.id },
-        data: {
-          status: "REVIEW_REQUIRED",
-          reviewFlag: true,
-          amountCaptured: capture.amount,
-          captureResponse: capture.raw as Prisma.InputJsonValue,
-          lastError: `Captured ${capture.amount} ${capture.currency} != expected ${expectedAmount}`,
-        },
+        data: { ...captureEvidence, status: "REVIEW_REQUIRED", reviewFlag: true, lastError: outcome.detail },
       });
       await writeAuditLog(tx, {
         eventType: "PAYMENT_REVIEW_FLAGGED",
@@ -263,35 +377,44 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
         resourceType: "Payment",
         previousState: payment.status,
         newState: "REVIEW_REQUIRED",
-        metadata: { captured: capture.amount, expected: expectedAmount },
+        metadata: {
+          reason: outcome.reason,
+          captureId: capture.captureId,
+          captured: capture.amount,
+          capturedCurrency: capture.currency,
+          expected: expected.amount,
+          expectedCurrency: expected.currency,
+        },
       });
       return updated;
     });
     await notifyOperators({
-      subject: "Payment amount mismatch",
+      subject: outcome.reason === "CURRENCY_MISMATCH" ? "Payment currency mismatch" : "Payment amount mismatch",
       paymentId: payment.id,
-      captured: capture.amount,
-      expected: expectedAmount,
+      captured: `${capture.amount ?? "?"} ${capture.currency ?? "?"}`,
+      expected: `${expected.amount} ${expected.currency}`,
     });
-    return { payment: flagged, captured: false, reviewRequired: true, reason: "AMOUNT_MISMATCH" };
+    return { payment: flagged, captured: false, reviewRequired: true, reason: outcome.reason };
   }
 
   const captured = await withTransaction(async (tx) => {
+    // Re-read inside the transaction: the webhook or a second tab may have
+    // captured this payment while the PayPal call was in flight.
+    const current = await tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    if (current.status === "CAPTURED") return { notificationIds: [] as string[], already: true };
     assertTransition(
       PAYMENT_TRANSITIONS,
-      payment.status,
+      current.status,
       "CAPTURED",
       "PAYMENT_NOT_CAPTURABLE",
       "This payment cannot be captured from its current status.",
     );
-    const updated = await tx.payment.update({
+    await tx.payment.update({
       where: { id: payment.id },
       data: {
+        ...captureEvidence,
         status: "CAPTURED",
         capturedAt: new Date(),
-        amountCaptured: capture.amount,
-        captureResponse: capture.raw as Prisma.InputJsonValue,
-        paypalStatus: capture.status,
         reviewFlag: false,
         lastError: null,
       },
@@ -301,9 +424,9 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
       actorId,
       resourceId: payment.id,
       resourceType: "Payment",
-      previousState: payment.status,
+      previousState: current.status,
       newState: "CAPTURED",
-      metadata: { paypalOrderId, amount: capture.amount, currency: capture.currency },
+      metadata: { paypalOrderId, captureId: capture.captureId, amount: capture.amount, currency: capture.currency },
     });
 
     const notifications = [];
@@ -325,15 +448,20 @@ export async function capturePayment(paypalOrderId: string, actorId: string): Pr
         ),
       );
     }
-    return { updated, notificationIds: notifications.map((n) => n.id) };
+    return { notificationIds: notifications.map((n) => n.id), already: false };
   });
 
-  await maybeCompleteAgreement(payment.milestone.agreementId);
+  if (!captured.already) {
+    // Verified capture → pay the Freelancer's share. Never throws.
+    await releasePayoutForPayment(payment.id);
+    await maybeCompleteAgreement(payment.milestone.agreementId);
+  }
 
   return {
     payment: await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } }),
     captured: true,
     reviewRequired: false,
+    reason: captured.already ? "ALREADY_CAPTURED" : undefined,
     notificationIds: captured.notificationIds,
   };
 }
@@ -357,53 +485,113 @@ export async function listPaymentsForClient(clientId: string): Promise<Payment[]
 }
 
 /**
- * Webhook reconciliation path: mark a payment captured from a verified
- * PAYMENT.CAPTURE.COMPLETED event. Amount mismatch flags manual review.
+ * Webhook reconciliation path for verified PAYMENT.CAPTURE.COMPLETED and
+ * PAYMENT.CAPTURE.DENIED events. Runs the same `evaluateCapture` decision as the
+ * synchronous capture, so amount AND currency must match, and every status
+ * change goes through the payment state table.
  */
 export async function reconcileCapturedPayment(input: {
-  paypalOrderId: string;
-  amount: string;
-  currency: string;
+  paypalOrderId: string | null;
+  captureId: string | null;
+  status: string;
+  amount: string | null;
+  currency: string | null;
   raw: unknown;
 }): Promise<{ payment: Payment | null; changed: boolean }> {
-  const payment = await prisma.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } });
+  const payment =
+    (input.captureId
+      ? await prisma.payment.findUnique({ where: { paypalCaptureId: input.captureId } })
+      : null) ??
+    (input.paypalOrderId
+      ? await prisma.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } })
+      : null);
   if (!payment) return { payment: null, changed: false };
   if (payment.status === "CAPTURED") return { payment, changed: false };
 
-  const expected = formatUsd(payment.amountExpected);
-  const matches = amountsEqual(input.amount, expected);
+  const expected = { amount: formatUsd(payment.amountExpected), currency: payment.currency };
+  const outcome = evaluateCapture(
+    {
+      status: input.status,
+      captureId: input.captureId,
+      amount: input.amount,
+      currency: input.currency,
+      statusReason: null,
+    },
+    expected,
+  );
+  if (outcome.kind === "PENDING") return { payment, changed: false };
+
+  const target =
+    outcome.kind === "CAPTURED" ? "CAPTURED" : outcome.kind === "FAILED" ? "FAILED" : "REVIEW_REQUIRED";
+  if (payment.status === target) return { payment, changed: false };
+  if (!(PAYMENT_TRANSITIONS[payment.status] ?? []).includes(target)) {
+    // e.g. money captured on an attempt this platform already marked FAILED.
+    // Never rewrite history silently — hand it to an operator.
+    console.error("[payments] webhook outcome conflicts with payment state", {
+      paymentId: payment.id,
+      current: payment.status,
+      target,
+    });
+    await notifyOperators({
+      subject: "Webhook capture conflicts with payment state",
+      paymentId: payment.id,
+      current: payment.status,
+      webhookStatus: input.status,
+    });
+    return { payment, changed: false };
+  }
+
+  const evidence = {
+    paypalCaptureId: input.captureId,
+    paypalStatus: input.status,
+    amountCaptured: input.amount,
+    currencyCaptured: input.currency,
+    captureResponse: input.raw as Prisma.InputJsonValue,
+  };
 
   const updated = await withTransaction(async (tx) => {
     const result = await tx.payment.update({
       where: { id: payment.id },
-      data: matches
-        ? {
-            status: "CAPTURED",
-            capturedAt: new Date(),
-            amountCaptured: input.amount,
-            paypalStatus: "COMPLETED",
-            captureResponse: input.raw as Prisma.InputJsonValue,
-            reviewFlag: false,
-          }
-        : {
-            status: "REVIEW_REQUIRED",
-            reviewFlag: true,
-            amountCaptured: input.amount,
-            captureResponse: input.raw as Prisma.InputJsonValue,
-            lastError: `Webhook amount ${input.amount} != expected ${expected}`,
-          },
+      data:
+        target === "CAPTURED"
+          ? { ...evidence, status: "CAPTURED", capturedAt: new Date(), reviewFlag: false, lastError: null }
+          : target === "FAILED"
+            ? { ...evidence, status: "FAILED", lastError: `Webhook capture ${input.status}` }
+            : {
+                ...evidence,
+                status: "REVIEW_REQUIRED",
+                reviewFlag: true,
+                lastError: outcome.kind === "REVIEW" ? `Webhook: ${outcome.detail}` : null,
+              },
     });
     await writeAuditLog(tx, {
-      eventType: matches ? "PAYMENT_CAPTURED" : "PAYMENT_REVIEW_FLAGGED",
+      eventType:
+        target === "CAPTURED" ? "PAYMENT_CAPTURED" : target === "FAILED" ? "PAYMENT_FAILED" : "PAYMENT_REVIEW_FLAGGED",
       actorId: payment.clientId,
       resourceId: payment.id,
       resourceType: "Payment",
       previousState: payment.status,
       newState: result.status,
-      metadata: { source: "WEBHOOK", amount: input.amount, expected },
+      metadata: {
+        source: "WEBHOOK",
+        captureId: input.captureId,
+        amount: input.amount,
+        currency: input.currency,
+        expected: expected.amount,
+        expectedCurrency: expected.currency,
+      },
     });
     return result;
   });
+
+  if (target === "REVIEW_REQUIRED") {
+    await notifyOperators({
+      subject: "Webhook capture needs review",
+      paymentId: payment.id,
+      captured: `${input.amount ?? "?"} ${input.currency ?? "?"}`,
+      expected: `${expected.amount} ${expected.currency}`,
+    });
+  }
 
   return { payment: updated, changed: true };
 }

@@ -5,6 +5,7 @@ import { requirePageSession } from "@/lib/auth/session";
 import { getMilestoneWithDeliverables } from "@/lib/milestones";
 import { buttonClass, Card, CardBody, CardHeader, PageHeader, StatusBadge } from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
+import { isMockMode } from "@/lib/payments/paypal-client";
 import { CheckoutPanel } from "./checkout-panel";
 
 type Params = { params: Promise<{ milestoneId: string }> };
@@ -65,9 +66,11 @@ export default async function CheckoutPage({ params }: Params) {
                       status: payment.status,
                       approveUrl: payment.approveUrl,
                       orderId: payment.paypalOrderId,
+                      captureId: payment.paypalCaptureId,
                     }
                   : null
               }
+              mockMode={isMockMode()}
             />
           </CardBody>
         </Card>

@@ -12,14 +12,18 @@ The platform exists because the three moments where freelance projects fall apar
 moments of ambiguity: what was agreed, what was delivered, and what was paid. PactFlow makes
 each of those a state the backend enforces, not a claim in a chat thread.
 
+> **Full product & technical guide:** [docs/GUIDE.md](docs/GUIDE.md) — every feature with the
+> files that implement it, how PayPal (Orders v2, webhooks, Payouts) and AI are used, the
+> sponsor technologies (AG Grid, Bryntum, Render), the API map, tests and the demo script.
+
 ---
 
 ## The three pillars
 
 | Pillar | What it does |
 | --- | --- |
-| **Agreement Intelligence** | AI drafts a quotation from the brief, a comparison workspace scores the offers, agreements are versioned and require **both** parties to approve, and scope changes go through a vote-and-dispute workflow before any new version takes effect. |
-| **Controlled Delivery & Payment** | Deliverables are uploaded as PDFs with a SHA-256 hash, previewed as watermarked derivatives, and released as the original only through a signed, expiring URL — and only once the payment for that milestone is captured. PayPal Orders v2 in `mock` or `sandbox` mode, with idempotent webhooks. |
+| **Agreement Intelligence** | AI drafts a quotation from the brief and a comparison workspace aligns the offers. **Selecting a proposal opens an Engagement, not a contract:** the two parties discuss, AI drafts a requirements brief (BRD) in which every item cites its source, and both parties approve one exact version. The SOW is derived from that approved baseline plus the proposal, and only then is the Agreement created — versioned, and active only when **both** parties approve. Scope changes are classified against the **approved requirements and the SOW** — every INCLUDED / OUTSIDE_SCOPE / AMBIGUOUS label cites the exact REQ / DEL / OOS items it relied on (an AI label with no valid citation is downgraded to AMBIGUOUS) — and go through a vote-and-dispute workflow before any new version takes effect. |
+| **Controlled Delivery & Payment** | Deliverables are uploaded as PDFs with a SHA-256 hash, previewed as watermarked derivatives, and released as the original only through a signed, expiring URL — and only once the payment for that milestone is captured. PayPal Orders v2 in `mock` or `sandbox` mode, with idempotent webhooks. **Two-sided:** once a capture is verified (status, amount and currency), the Freelancer's share — minus an optional `PLATFORM_FEE_PERCENT` — is sent with the **PayPal Payouts API**, idempotent per payment and reconciled from `PAYMENT.PAYOUTS-ITEM.*` webhooks. A payment under review is never paid out. |
 | **Relationship Intelligence** | Every engagement appends to a shared, append-only history; both parties record working preferences the other must confirm; an AI summary cites the history entries it drew from and can be flagged for correction; templates and repeat invitations carry the relationship forward. |
 
 ## The hard rule
@@ -72,16 +76,26 @@ The seeder creates a complete, mid-flight engagement. Every account uses the pas
 1. Sign in as the **Client** and open *Briefs*. The seeded brief is `OPEN` with two invitations,
    one of them already accepted.
 2. Open *Compare quotations* — the comparison workspace shows both offers side by side, the AI
-   summary cites each quotation, and *Accept* is a human decision.
-3. Accept a quotation and you land on the **Agreement**: version 1 is `ACTIVE` because both
-   parties have approved it. Start a **scope change** to watch the vote/dispute workflow.
-4. Go to *Delivery*. Upload a PDF and open the **watermarked preview** — the original is not
+   summary cites each quotation, and *Select* is a human decision.
+3. Select a proposal and you land on the **Engagement** — no agreement exists yet. Post a
+   discovery message, open *Requirements* and press *Draft with AI*: every requirement shows
+   its source (brief field, proposal line, discovery message) and anything unsupported is
+   marked *needs confirmation*. Save it as version 1 — approval is blocked until the open
+   items are confirmed in a new version. Both parties approve the **same** version, then
+   *Review SOW* shows the deliverable → requirement → acceptance-criteria trace and any
+   price/date conflict for a person to resolve. Submitting creates the Agreement at version 1,
+   pending both approvals.
+4. The seeded **Agreement** (from before the engagement stage) is already `ACTIVE`. Start a
+   **scope change** there to watch the vote/dispute workflow.
+5. Go to *Delivery*. Upload a PDF and open the **watermarked preview** — the original is not
    reachable yet. Approve the work, then the milestone, then *Continue to PayPal*. In `mock` mode
    you land on `/payments/mock-approve`; approving there captures the payment and the signed
-   download becomes available.
-5. Sign in as the **Freelancer** for the other side of every screen, including the discussion
+   download becomes available. The *Freelancer payout* card then shows the PayPal Payouts
+   batch: the captured amount, the platform fee and what was sent to the Freelancer (sign in
+   as the Freelancer and set a PayPal payout email on *Delivery* if it says it is waiting).
+6. Sign in as the **Freelancer** for the other side of every screen, including the discussion
    thread on the agreement.
-6. Open *Collaboration*. The pair profile lists confirmed preferences, templates and the repeat
+7. Open *Collaboration*. The pair profile lists confirmed preferences, templates and the repeat
    invitation; the AI summary cites its sources and can be flagged.
 
 ## Test suite

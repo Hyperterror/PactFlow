@@ -9,7 +9,7 @@ import { quotationTotal } from "@/lib/quotations";
 import { generateComparisonSummary, AI_COMPARISON_UNAVAILABLE } from "@/lib/ai/comparison";
 import type { ComparisonSummary } from "@/lib/ai/schemas";
 import { formatUsd } from "@/lib/ai/heuristic";
-import { createAgreementFromQuotation } from "@/lib/agreements";
+import { selectProposal } from "@/lib/engagements";
 
 /**
  * Requirement 8 — Quotation Comparison Workspace.
@@ -495,18 +495,19 @@ export async function exportWorkspacePDF(
 }
 
 /**
- * Requirement 8.8 — accepting a Quotation from inside the workspace hands the
- * caller the Agreement that was created, with the Quotation pre-loaded.
+ * Lifecycle Update PRD FR-02 — selecting a proposal opens an Engagement for
+ * discovery and requirements. It does not create an Agreement: that happens
+ * only after both parties approve the requirements and submit the SOW.
+ * Repeating the request returns the same Engagement.
  */
 export async function acceptFromWorkspace(
   briefId: string,
   clientId: string,
   quotationId: string,
-): Promise<{ agreementId: string }> {
+): Promise<{ engagementId: string; created: boolean }> {
   await loadBriefForClient(briefId, clientId);
-  await assertComparableQuotation(quotationId, briefId);
-  const agreement = await createAgreementFromQuotation(quotationId, clientId);
-  return { agreementId: agreement.id };
+  const { engagement, created } = await selectProposal(briefId, clientId, quotationId);
+  return { engagementId: engagement.id, created };
 }
 
 /** Guard used by Freelancer-facing routes: annotations are Client-only. */

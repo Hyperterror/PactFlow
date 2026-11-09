@@ -9,8 +9,9 @@ import { register, registerSession, uniqueEmail } from "./support";
  *
  * The whole journey runs in one test because each step depends on the last:
  * two invitations produce two quotations, the quotations populate the
- * comparison workspace, accepting one creates the agreement, and the agreement
- * only becomes active on the second approval. Three separate browser contexts
+ * comparison workspace, selecting one opens an engagement (not an agreement),
+ * both parties approve one requirements version, the SOW creates the
+ * agreement, and the agreement only becomes active on the second approval. Three separate browser contexts
  * stand in for the three people involved.
  */
 
@@ -26,7 +27,7 @@ async function alignAllBids(page: Page): Promise<void> {
   }
 }
 
-test("a published brief becomes a dual-approved agreement", async ({ page }) => {
+test("a published brief becomes a dual-approved agreement through an approved requirements baseline", async ({ page }) => {
   const stamp = Date.now().toString(36);
   const clientEmail = uniqueEmail("client");
   const firstEmail = uniqueEmail("freelancer");
@@ -116,12 +117,64 @@ test("a published brief becomes a dual-approved agreement", async ({ page }) => 
     await expect(page.getByRole("button", { name: "Regenerate" })).toBeVisible({ timeout: 25_000 });
     await expect(page.getByText(/Grounded in \d+ quotations/)).toBeVisible();
 
-    // ── 9.x: acceptance creates the agreement at version 1 ─────────────────
-    await page.getByRole("button", { name: /^Accept E2E Freelancer One/ }).click();
+    // ── Lifecycle update: selection opens an engagement, not an agreement ──
+    await page.getByRole("button", { name: /^Select E2E Freelancer One/ }).click();
+    await page.waitForURL(/\/engagements\/[^/]+$/);
+    const engagementId = /\/engagements\/([^/?#]+)/.exec(page.url())![1];
+    await expect(page.getByText("1. Discovery")).toBeVisible();
+    const agreementsBefore = await (await page.request.get("/api/agreements")).json();
+    expect(agreementsBefore.agreements).toHaveLength(0);
+
+    // Discovery happens on the engagement, with no agreement behind it.
+    await page.locator("#discovery-message").fill("The pricing page must show monthly and annual plans.");
+    await page.getByRole("button", { name: "Post message" }).click();
+    await expect(page.getByText("The pricing page must show monthly and annual plans.")).toBeVisible();
+
+    // ── FR-04: AI drafts the requirements; a person saves them as v1 ───────
+    await page.goto(`/engagements/${engagementId}/requirements`);
+    await page.getByRole("button", { name: "Draft with AI" }).click();
+    await expect(page.getByText(/AI draft loaded/)).toBeVisible({ timeout: 25_000 });
+    await page.getByRole("button", { name: "Save as version 1" }).click();
+    await page.waitForURL(/\/requirements$/);
+    // Drafted assumptions are unconfirmed, so v1 cannot be approved.
+    await expect(page.getByText("Approval is blocked until a revision resolves:")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Approve requirements v1" })).toBeDisabled();
+
+    // ── The Freelancer confirms the open items in v2 ───────────────────────
+    await first.goto(`/engagements/${engagementId}/requirements?edit=1`);
+    const confirmations = first.getByRole("checkbox", { name: /^Confirm ASM-/ });
+    for (let index = 0; index < (await confirmations.count()); index += 1) {
+      await confirmations.nth(index).check();
+    }
+    const flagged = first.getByRole("checkbox", { name: / needs confirmation$/ });
+    for (let index = 0; index < (await flagged.count()); index += 1) {
+      await flagged.nth(index).uncheck();
+    }
+    await first.locator("#change-summary").fill("Confirmed the timeline and scope assumptions");
+    await first.getByRole("button", { name: "Save as version 2" }).click();
+    await first.waitForURL(/\/requirements$/);
+
+    // ── FR-05: both parties approve the same version ───────────────────────
+    await first.getByRole("button", { name: "Approve requirements v2" }).click();
+    await expect(first.getByText(/You approved version 2/)).toBeVisible();
+    await page.goto(`/engagements/${engagementId}/requirements`);
+    await page.getByRole("button", { name: "Approve requirements v2" }).click();
+    await expect(page.getByText("Both parties approved version 2.")).toBeVisible();
+
+    // ── FR-06: the SOW is derived from v2 and the accepted proposal ────────
+    await page.goto(`/engagements/${engagementId}/sow`);
+    await expect(page.getByText("DEL-001")).toBeVisible();
+    // Any conflict between proposal and brief needs a human decision first.
+    const conflicts = page.locator("fieldset");
+    for (let index = 0; index < (await conflicts.count()); index += 1) {
+      await conflicts.nth(index).getByRole("radio").first().check();
+    }
+    await page.getByRole("button", { name: "Submit SOW for approval" }).click();
     await page.waitForURL(/\/agreements\/[^/]+$/);
     const agreementId = /\/agreements\/([^/?#]+)/.exec(page.url())![1];
 
     await expect(page.getByText("Pending approval — no delivery or payment can start until both parties approve.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Requirements v2" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve version 1" })).toBeVisible();
 
     // ── 9.5: one approval is never enough ──────────────────────────────────
@@ -148,6 +201,10 @@ test("a published brief becomes a dual-approved agreement", async ({ page }) => 
     // stranger rather than confirming that the record exists.
     await second.goto(`/agreements/${agreementId}`);
     await expect(second.getByRole("heading", { name: "Not found" })).toBeVisible();
+    // Nor is the engagement that preceded it.
+    await second.goto(`/engagements/${engagementId}`);
+    await expect(second.getByRole("heading", { name: "Not found" })).toBeVisible();
+    await second.goto(`/agreements/${agreementId}`);
     await expect(second.getByText("Approved", { exact: true })).toHaveCount(0);
     await expect(second.getByRole("button", { name: /Approve version/ })).toHaveCount(0);
   } finally {

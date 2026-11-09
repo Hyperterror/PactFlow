@@ -6,6 +6,7 @@ import { getAgreement } from "@/lib/agreements";
 import { assertAgreementParticipant } from "@/lib/access";
 import { listMessages } from "@/lib/change-requests/discussion";
 import { listChangeRequests } from "@/lib/change-requests";
+import { readStoredEvidence } from "@/lib/ai/scope-baseline";
 import { buttonClass, PageHeader, StatusBadge } from "@/components/ui";
 import { DiscussionRoom, type FeedMessage, type ProposalRow } from "./discussion-room";
 
@@ -43,6 +44,8 @@ export default async function DiscussionPage({ params }: Params) {
     status: proposal.status,
     scopeLabel: proposal.scopeLabel,
     scopeRationale: proposal.scopeRationale,
+    scopeEvidence: readStoredEvidence(proposal.scopeEvidence),
+    scopeBaseline: proposal.scopeBaseline,
     responseDeadline: proposal.responseDeadline.toISOString(),
     reminderSentAt: proposal.reminderSentAt?.toISOString() ?? null,
     submitterId: proposal.submitterId,

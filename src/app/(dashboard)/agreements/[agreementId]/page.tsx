@@ -15,6 +15,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { formatDate, formatDateTime, formatMoney, humanize } from "@/lib/format";
+import { SowView, type SowViewData } from "@/components/sow-view";
 import { AgreementApprove } from "./agreement-approve";
 
 type Params = { params: Promise<{ agreementId: string }> };
@@ -34,9 +35,22 @@ interface Snapshot {
   currency?: string;
   capturedAt?: string;
   amendedBy?: string;
+  sow?: SowViewData & { engagementId?: string; quotationId?: string };
 }
 
 function SnapshotBody({ snapshot }: { snapshot: Snapshot }) {
+  // Agreements created from an approved requirements baseline carry the SOW.
+  if (snapshot.sow) {
+    return (
+      <div className="space-y-4">
+        <SowView sow={snapshot.sow} />
+        <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-border-base pt-3 text-xs text-muted">
+          {snapshot.amendedBy ? <span>Amended by {humanize(String(snapshot.amendedBy))}</span> : null}
+          <span>Captured {formatDateTime(snapshot.capturedAt)}</span>
+        </div>
+      </div>
+    );
+  }
   const currency = snapshot.currency ?? "USD";
   const lineItems = Array.isArray(snapshot.lineItems) ? snapshot.lineItems : [];
   const deliverables = Array.isArray(snapshot.deliverables) ? snapshot.deliverables : [];
@@ -138,6 +152,14 @@ export default async function AgreementPage({ params }: Params) {
             <Link href={`/agreements/${agreementId}/discussion`} className={buttonClass("secondary", "md")}>
               Discussion
             </Link>
+            {current.sow?.engagementId ? (
+              <Link
+                href={`/engagements/${current.sow.engagementId}/requirements`}
+                className={buttonClass("ghost", "md")}
+              >
+                Requirements v{current.sow.requirementsVersionNumber}
+              </Link>
+            ) : null}
             <Link href={`/briefs/${agreement.briefId}`} className={buttonClass("ghost", "md")}>
               Brief
             </Link>

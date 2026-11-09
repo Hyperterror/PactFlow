@@ -11,13 +11,13 @@ const AcceptSchema = z.object({
 });
 
 /**
- * Requirement 8.10 — accepting from the workspace creates the Agreement through
- * exactly the same path as the quotation detail page.
+ * Selecting a proposal (from the workspace or the quotation page) opens an
+ * Engagement and returns its id. 201 the first time, 200 on a repeat.
  */
 export const POST = handler(async (req: NextRequest, { params }: Params) => {
   const user = await requireSession();
   const { briefId } = await params;
   const { quotationId } = await parseJson(req, AcceptSchema);
-  const { agreementId } = await acceptFromWorkspace(briefId, user.id, quotationId);
-  return json({ agreementId }, 201);
+  const { engagementId, created } = await acceptFromWorkspace(briefId, user.id, quotationId);
+  return json({ engagementId }, created ? 201 : 200);
 });

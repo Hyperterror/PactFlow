@@ -117,11 +117,11 @@ export function ComparisonWorkspace({ briefId, initial }: { briefId: string; ini
     setBusy("accept");
     setError(null);
     try {
-      const data = await apiRequest<{ agreementId: string }>(`/api/briefs/${briefId}/comparison/accept`, {
+      const data = await apiRequest<{ engagementId: string }>(`/api/briefs/${briefId}/comparison/accept`, {
         method: "POST",
         body: JSON.stringify({ quotationId }),
       });
-      navigateAfterMutation(`/agreements/${data.agreementId}`);
+      navigateAfterMutation(`/engagements/${data.engagementId}`);
     } catch (thrown) {
       setError(errorMessage(thrown));
       setBusy(null);
@@ -324,7 +324,10 @@ export function ComparisonWorkspace({ briefId, initial }: { briefId: string; ini
       </Card>
 
       <Card>
-        <CardHeader title="Accept a quotation" description="Acceptance creates the agreement. Nothing is signed yet." />
+        <CardHeader
+          title="Select a proposal"
+          description="Selecting opens an engagement to agree the requirements. No agreement is created and nothing is signed yet."
+        />
         <CardBody className="flex flex-wrap gap-2">
           {state.columns.map((column) => (
             <button
@@ -334,7 +337,7 @@ export function ComparisonWorkspace({ briefId, initial }: { briefId: string; ini
               onClick={() => void accept(column.quotationId)}
               disabled={busy !== null}
             >
-              Accept {column.freelancerName} · {formatMoney(column.total)}
+              Select {column.freelancerName} · {formatMoney(column.total)}
             </button>
           ))}
         </CardBody>

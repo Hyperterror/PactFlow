@@ -36,12 +36,12 @@ export function QuotationActions({
     setBusy(label);
     setError(null);
     try {
-      const data = await apiRequest<{ agreementId?: string }>(path, {
+      const data = await apiRequest<{ engagementId?: string }>(path, {
         method: "POST",
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      if (data.agreementId) {
-        navigateAfterMutation(`/agreements/${data.agreementId}`);
+      if (data.engagementId) {
+        navigateAfterMutation(`/engagements/${data.engagementId}`);
         return;
       }
       refresh();
@@ -91,7 +91,7 @@ export function QuotationActions({
             disabled={busy !== null}
             onClick={() => void run("accept", `/api/briefs/${briefId}/comparison/accept`, { quotationId })}
           >
-            {busy === "accept" ? "Accepting…" : "Accept quotation"}
+            {busy === "accept" ? "Selecting…" : "Select this proposal"}
           </button>
         ) : null}
 
@@ -118,8 +118,8 @@ export function QuotationActions({
       </div>
 
       <p className="text-xs text-muted">
-        Current state: <span className="font-medium text-foreground">{humanize(status)}</span>. Accepting creates the
-        agreement — nothing is payable until delivery is approved.
+        Current state: <span className="font-medium text-foreground">{humanize(status)}</span>. Selecting opens an
+        engagement to agree the requirements; the agreement comes after both parties approve the SOW.
       </p>
     </div>
   );

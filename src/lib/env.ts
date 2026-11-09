@@ -32,7 +32,13 @@ export const env = {
   paypalClientSecret: flag(process.env.PAYPAL_CLIENT_SECRET),
   paypalBaseUrl: flag(process.env.PAYPAL_BASE_URL, "https://api-m.sandbox.paypal.com"),
   paypalWebhookId: flag(process.env.PAYPAL_WEBHOOK_ID),
+  // Mock-mode HMAC secret only. Sandbox mode verifies through PayPal and needs
+  // PAYPAL_WEBHOOK_ID; production refuses this default (see webhooks/verifier).
   paypalWebhookSecret: flag(process.env.PAYPAL_WEBHOOK_SECRET, "pactflow-dev-webhook-secret"),
+
+  // Share of each captured milestone payment kept by the platform before the
+  // Freelancer payout, in percent (0–50). 0 pays the Freelancer the full amount.
+  platformFeePercent: Math.min(50, Math.max(0, Number(flag(process.env.PLATFORM_FEE_PERCENT, "0")) || 0)),
 
   // LLM
   llmApiKey: flag(process.env.LLM_API_KEY),
@@ -47,9 +53,20 @@ export const env = {
   cronSecret: flag(process.env.CRON_SECRET),
 } as const;
 
+let warnedAboutSandboxFallback = false;
+
 /** True when the real PayPal Orders v2 Sandbox API should be called. */
 export function isRealPayPalEnabled(): boolean {
-  return env.paypalMode === "sandbox" && env.paypalClientId !== "" && env.paypalClientSecret !== "";
+  const enabled = env.paypalMode === "sandbox" && env.paypalClientId !== "" && env.paypalClientSecret !== "";
+  // Asking for Sandbox without credentials silently ran the simulator before,
+  // which makes a demo look live when it is not. Say so once, loudly.
+  if (env.paypalMode === "sandbox" && !enabled && !warnedAboutSandboxFallback) {
+    warnedAboutSandboxFallback = true;
+    console.warn(
+      "[paypal] PAYPAL_MODE=sandbox but PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are empty — using the local mock checkout instead of PayPal Sandbox.",
+    );
+  }
+  return enabled;
 }
 
 /** True when a real LLM endpoint should be called. */

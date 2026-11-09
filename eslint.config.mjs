@@ -18,6 +18,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Local scratch scripts, test output and reports — not application code.
+      ".data/**",
+      "playwright-report/**",
+      "test-results/**",
+      "coverage/**",
     ],
   },
 ];

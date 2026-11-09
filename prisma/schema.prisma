@@ -93,6 +93,46 @@ enum PaymentStatus {
   REVIEW_REQUIRED
 }
 
+// Engagement lifecycle (Lifecycle Update PRD section 8). Selection opens
+// DISCOVERY; the first saved requirements version moves it to REQUIREMENTS;
+// mutual approval of one exact version moves it to REQUIREMENTS_APPROVED;
+// submitting the SOW creates the Agreement and moves it to AGREEMENT. From
+// there the Agreement owns the detailed state (ACTIVE / COMPLETED).
+enum EngagementStatus {
+  DISCOVERY
+  REQUIREMENTS
+  REQUIREMENTS_APPROVED
+  AGREEMENT
+  CANCELLED
+}
+
+enum DiscoveryTermsType {
+  UNPAID
+  TIME_BOXED
+  PAID
+}
+
+// A saved requirements version is immutable. IN_REVIEW -> APPROVED when both
+// parties approve it; any version a newer one replaces becomes SUPERSEDED.
+enum RequirementsVersionStatus {
+  IN_REVIEW
+  APPROVED
+  SUPERSEDED
+}
+
+// Freelancer payout after a verified capture (PayPal Payouts API).
+// AWAITING_RECEIVER: captured, but the Freelancer has not added a PayPal email.
+// PENDING: submitted to PayPal, item not final yet. SUCCEEDED / UNCLAIMED /
+// FAILED mirror the payout item's transaction status (UNCLAIMED = PayPal holds
+// it until the receiver signs up; it returns to the sender after 30 days).
+enum PayoutStatus {
+  AWAITING_RECEIVER
+  PENDING
+  SUCCEEDED
+  UNCLAIMED
+  FAILED
+}
+
 enum WorkingPreferenceStatus {
   PENDING_ACKNOWLEDGEMENT
   CONFIRMED
@@ -120,43 +160,61 @@ enum NotificationType {
   DISCUSSION_MESSAGE
   DELIVERABLE_REVIEWED
   COLLABORATION_READY
+  PAYOUT_SENT
+  PAYOUT_FAILED
+  PAYOUT_ACCOUNT_NEEDED
+  ENGAGEMENT_CREATED
+  ENGAGEMENT_MESSAGE
+  ENGAGEMENT_CANCELLED
+  REQUIREMENTS_VERSION_CREATED
+  REQUIREMENTS_COMMENT
+  REQUIREMENTS_APPROVED
 }
 
 // ─── Core Entities ────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  displayName  String
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  email             String   @unique
+  displayName       String
+  passwordHash      String
+  // Where PayPal Payouts sends this user's earnings as a Freelancer.
+  paypalPayoutEmail String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  sessions              Session[]
-  loginAttempts         LoginAttempt[]
-  briefsAsClient        Brief[]
-  invitationsSent       Invitation[]               @relation("InvitationClient")
-  invitationsReceived   Invitation[]               @relation("InvitationFreelancer")
-  quotations            Quotation[]
-  agreementApprovals    AgreementApproval[]
-  changeRequests        ChangeRequest[]            @relation("ChangeRequestSubmitter")
-  changeRequestVotes    ChangeRequestVote[]
-  scopeDisputes         ScopeLabelDispute[]
-  discussionMessages    DiscussionMessage[]
-  deliverables          Deliverable[]
-  revisionRequests      RevisionRequest[]
-  paymentsMade          Payment[]                  @relation("PaymentClient")
-  notifications         Notification[]
-  auditActorEntries     AuditLog[]
-  collaborationAsClient CollaborationHistory[]     @relation("CollabClient")
+  sessions                  Session[]
+  loginAttempts             LoginAttempt[]
+  briefsAsClient            Brief[]
+  invitationsSent           Invitation[]           @relation("InvitationClient")
+  invitationsReceived       Invitation[]           @relation("InvitationFreelancer")
+  quotations                Quotation[]
+  agreementApprovals        AgreementApproval[]
+  changeRequests            ChangeRequest[]        @relation("ChangeRequestSubmitter")
+  changeRequestVotes        ChangeRequestVote[]
+  scopeDisputes             ScopeLabelDispute[]
+  discussionMessages        DiscussionMessage[]
+  deliverables              Deliverable[]
+  revisionRequests          RevisionRequest[]
+  paymentsMade              Payment[]              @relation("PaymentClient")
+  notifications             Notification[]
+  auditActorEntries         AuditLog[]
+  collaborationAsClient     CollaborationHistory[] @relation("CollabClient")
   collaborationAsFreelancer CollaborationHistory[] @relation("CollabFreelancer")
-  workingPreferences    WorkingPreference[]
-  collaborationSummaries CollaborationSummary[]
-  signedUrlEvents       SignedUrlEvent[]
-  comparisonAnnotations ComparisonAnnotation[]
-  quotationComments     QuotationComment[]
-  projectTemplates      ProjectTemplate[]
-  passwordResetTokens   PasswordResetToken[]
+  workingPreferences        WorkingPreference[]
+  collaborationSummaries    CollaborationSummary[]
+  signedUrlEvents           SignedUrlEvent[]
+  comparisonAnnotations     ComparisonAnnotation[]
+  quotationComments         QuotationComment[]
+  projectTemplates          ProjectTemplate[]
+  passwordResetTokens       PasswordResetToken[]
+  payoutsReceived           Payout[]
+  engagementsAsClient       Engagement[]           @relation("EngagementClient")
+  engagementsAsFreelancer   Engagement[]           @relation("EngagementFreelancer")
+  engagementMessages        EngagementMessage[]
+  requirementsVersions      RequirementsVersion[]
+  requirementsApprovals     RequirementsApproval[]
+  requirementsComments      RequirementsComment[]
 
   @@index([email])
 }
@@ -212,28 +270,29 @@ model Brief {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  client               User                  @relation(fields: [clientId], references: [id])
-  projectTemplate      ProjectTemplate?      @relation(fields: [projectTemplateId], references: [id])
-  invitations          Invitation[]
-  quotations           Quotation[]
-  agreements           Agreement[]
-  comparisonWorkspace  ComparisonWorkspace?
+  client              User                 @relation(fields: [clientId], references: [id])
+  projectTemplate     ProjectTemplate?     @relation(fields: [projectTemplateId], references: [id])
+  invitations         Invitation[]
+  quotations          Quotation[]
+  agreements          Agreement[]
+  engagements         Engagement[]
+  comparisonWorkspace ComparisonWorkspace?
 
   @@index([clientId, createdAt])
 }
 
 model Invitation {
-  id           String           @id @default(cuid())
-  briefId      String
-  clientId     String
-  freelancerId String
-  token        String           @unique @default(cuid())
-  status       InvitationStatus @default(PENDING)
+  id                  String           @id @default(cuid())
+  briefId             String
+  clientId            String
+  freelancerId        String
+  token               String           @unique @default(cuid())
+  status              InvitationStatus @default(PENDING)
   // Repeat-engagement context attached at send time (Requirement 22.5).
   attachmentSummaryId String?
   attachmentHistoryId String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   brief      Brief @relation(fields: [briefId], references: [id])
   client     User  @relation("InvitationClient", fields: [clientId], references: [id])
@@ -259,10 +318,11 @@ model Quotation {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  brief      Brief  @relation(fields: [briefId], references: [id])
-  freelancer User   @relation(fields: [freelancerId], references: [id])
-  comments   QuotationComment[]
-  agreements Agreement[]
+  brief           Brief              @relation(fields: [briefId], references: [id])
+  freelancer      User               @relation(fields: [freelancerId], references: [id])
+  comments        QuotationComment[]
+  agreements      Agreement[]
+  engagement      Engagement?
   comparisonItems ComparisonItem[]
 
   @@index([briefId, submittedAt])
@@ -307,24 +367,29 @@ model Agreement {
   milestones         Milestone[]
   changeRequests     ChangeRequest[]
   discussionMessages DiscussionMessage[]
+  engagement         Engagement?
 
   @@index([clientId])
   @@index([freelancerId])
 }
 
 model AgreementVersion {
-  id            String   @id @default(cuid())
-  agreementId   String
-  versionNumber Int
-  content       Json // Full immutable snapshot of agreement terms
-  authorId      String
-  authorRole    String // CLIENT | FREELANCER | PLATFORM
-  createdAt     DateTime @default(now())
+  id                    String   @id @default(cuid())
+  agreementId           String
+  versionNumber         Int
+  content               Json // Full immutable snapshot of agreement terms
+  authorId              String
+  authorRole            String // CLIENT | FREELANCER | PLATFORM
+  // Traceability to the approved requirements baseline the SOW was built from.
+  // Null for versions created without an Engagement (amendments copy it).
+  requirementsVersionId String?
+  createdAt             DateTime @default(now())
 
-  agreement  Agreement           @relation(fields: [agreementId], references: [id])
-  approvals  AgreementApproval[]
-  milestones Milestone[]
-  payments   Payment[]
+  agreement           Agreement            @relation(fields: [agreementId], references: [id])
+  requirementsVersion RequirementsVersion? @relation(fields: [requirementsVersionId], references: [id])
+  approvals           AgreementApproval[]
+  milestones          Milestone[]
+  payments            Payment[]
 
   @@unique([agreementId, versionNumber]) // Enforces monotonicity invariant at DB level
   @@index([agreementId, versionNumber])
@@ -350,28 +415,32 @@ model AgreementApproval {
 }
 
 model ChangeRequest {
-  id                   String              @id @default(cuid())
-  agreementId          String
-  submitterId          String
-  discussionMessageId  String              @unique
-  status               ChangeRequestStatus @default(SUBMITTED)
-  scopeLabel           ScopeLabel?
-  scopeRationale       String?
-  scopeClassifiedAt    DateTime?
-  responseDeadline     DateTime
-  reminderSentAt       DateTime?
-  clientVote           String? // APPROVE | REJECT
-  freelancerVote       String?
-  clientVotedAt        DateTime?
-  freelancerVotedAt    DateTime?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  id                  String              @id @default(cuid())
+  agreementId         String
+  submitterId         String
+  discussionMessageId String              @unique
+  status              ChangeRequestStatus @default(SUBMITTED)
+  scopeLabel          ScopeLabel?
+  scopeRationale      String?
+  // Baseline items the label relied on: [{ ref, relation, text, matchedTerms }].
+  scopeEvidence       Json?
+  // e.g. "Requirements v3 + Agreement v1 (SOW)"
+  scopeBaseline       String?
+  scopeClassifiedAt   DateTime?
+  responseDeadline    DateTime
+  reminderSentAt      DateTime?
+  clientVote          String? // APPROVE | REJECT
+  freelancerVote      String?
+  clientVotedAt       DateTime?
+  freelancerVotedAt   DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
-  agreement      Agreement            @relation(fields: [agreementId], references: [id])
-  submitter      User                 @relation("ChangeRequestSubmitter", fields: [submitterId], references: [id])
-  discussionMessage DiscussionMessage @relation(fields: [discussionMessageId], references: [id])
-  votes          ChangeRequestVote[]
-  disputes       ScopeLabelDispute[]
+  agreement         Agreement           @relation(fields: [agreementId], references: [id])
+  submitter         User                @relation("ChangeRequestSubmitter", fields: [submitterId], references: [id])
+  discussionMessage DiscussionMessage   @relation(fields: [discussionMessageId], references: [id])
+  votes             ChangeRequestVote[]
+  disputes          ScopeLabelDispute[]
 
   @@index([agreementId, status])
 }
@@ -416,19 +485,19 @@ model DiscussionMessage {
 }
 
 model Milestone {
-  id                String          @id @default(cuid())
-  agreementId       String
+  id                 String          @id @default(cuid())
+  agreementId        String
   agreementVersionId String
-  name              String
-  description       String
-  dueDate           DateTime
-  paymentAmount     Decimal
-  status            MilestoneStatus @default(PENDING)
-  deliveredAt       DateTime?
-  approvedAt        DateTime?
-  overdueNotifiedAt DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  name               String
+  description        String
+  dueDate            DateTime
+  paymentAmount      Decimal
+  status             MilestoneStatus @default(PENDING)
+  deliveredAt        DateTime?
+  approvedAt         DateTime?
+  overdueNotifiedAt  DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   agreement        Agreement        @relation(fields: [agreementId], references: [id])
   agreementVersion AgreementVersion @relation(fields: [agreementVersionId], references: [id])
@@ -454,8 +523,8 @@ model Deliverable {
   revisionCount Int               @default(0)
   updatedAt     DateTime          @updatedAt
 
-  milestone       Milestone        @relation(fields: [milestoneId], references: [id])
-  freelancer      User             @relation(fields: [freelancerId], references: [id])
+  milestone       Milestone         @relation(fields: [milestoneId], references: [id])
+  freelancer      User              @relation(fields: [freelancerId], references: [id])
   revisions       RevisionRequest[]
   payment         Payment?
   signedUrlEvents SignedUrlEvent[]
@@ -464,11 +533,11 @@ model Deliverable {
 }
 
 model RevisionRequest {
-  id           String   @id @default(cuid())
+  id            String   @id @default(cuid())
   deliverableId String
-  clientId     String
-  feedbackText String
-  createdAt    DateTime @default(now())
+  clientId      String
+  feedbackText  String
+  createdAt     DateTime @default(now())
 
   deliverable Deliverable @relation(fields: [deliverableId], references: [id])
   client      User        @relation(fields: [clientId], references: [id])
@@ -486,8 +555,10 @@ model Payment {
   amountExpected     Decimal
   amountCaptured     Decimal?
   currency           String        @default("USD")
+  currencyCaptured   String? // Currency PayPal reported on the capture itself
   paypalOrderId      String?       @unique
-  paypalStatus       String?
+  paypalCaptureId    String?       @unique // purchase_units[0].payments.captures[0].id
+  paypalStatus       String? // Status of the capture (not the order) once one exists
   approveUrl         String?
   idempotencyKey     String        @unique // Per-attempt key
   capturedAt         DateTime?
@@ -501,8 +572,41 @@ model Payment {
   deliverable      Deliverable?     @relation(fields: [deliverableId], references: [id])
   agreementVersion AgreementVersion @relation(fields: [agreementVersionId], references: [id])
   client           User             @relation("PaymentClient", fields: [clientId], references: [id])
+  payout           Payout?
 
   @@index([idempotencyKey])
+}
+
+/// The Freelancer's share of one captured milestone payment, sent with the
+/// PayPal Payouts API. One per Payment; `senderBatchId` is derived from the
+/// payment, so a retry can never pay twice.
+model Payout {
+  id            String       @id @default(cuid())
+  paymentId     String       @unique
+  milestoneId   String
+  freelancerId  String
+  status        PayoutStatus @default(AWAITING_RECEIVER)
+  receiverEmail String?
+  grossAmount   Decimal // amount captured from the Client
+  platformFee   Decimal
+  amount        Decimal // grossAmount - platformFee, sent to the Freelancer
+  currency      String       @default("USD")
+  senderBatchId String       @unique
+  paypalBatchId String?      @unique
+  paypalItemId  String?      @unique
+  paypalStatus  String? // payout item transaction_status as PayPal reported it
+  lastError     String?
+  attempts      Int          @default(0)
+  submittedAt   DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  payment    Payment @relation(fields: [paymentId], references: [id])
+  freelancer User    @relation(fields: [freelancerId], references: [id])
+
+  @@index([freelancerId, status])
+  @@index([status, updatedAt])
 }
 
 model WebhookEvent {
@@ -565,26 +669,26 @@ model CollaborationHistory {
   totalPaymentAmount Decimal
   createdAt          DateTime @default(now())
 
-  client           User                   @relation("CollabClient", fields: [clientId], references: [id])
-  freelancer       User                   @relation("CollabFreelancer", fields: [freelancerId], references: [id])
-  preferences      WorkingPreference[]
-  summaries        CollaborationSummary[]
-  templates        ProjectTemplate[]
+  client      User                   @relation("CollabClient", fields: [clientId], references: [id])
+  freelancer  User                   @relation("CollabFreelancer", fields: [freelancerId], references: [id])
+  preferences WorkingPreference[]
+  summaries   CollaborationSummary[]
+  templates   ProjectTemplate[]
 
   @@index([clientId, freelancerId])
 }
 
 model WorkingPreference {
-  id             String                  @id @default(cuid())
-  historyId      String
-  authorId       String
-  statement      String
-  status         WorkingPreferenceStatus @default(PENDING_ACKNOWLEDGEMENT)
+  id                   String                  @id @default(cuid())
+  historyId            String
+  authorId             String
+  statement            String
+  status               WorkingPreferenceStatus @default(PENDING_ACKNOWLEDGEMENT)
   authorAcknowledgedAt DateTime?
-  acknowledgedBy String? // other party's user id
-  acknowledgedAt DateTime?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  acknowledgedBy       String? // other party's user id
+  acknowledgedAt       DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   history CollaborationHistory @relation(fields: [historyId], references: [id])
   author  User                 @relation(fields: [authorId], references: [id])
@@ -674,4 +778,122 @@ model ComparisonAnnotation {
   client    User                @relation(fields: [clientId], references: [id])
 
   @@unique([workspaceId, quotationId, attribute])
+}
+
+// --- Engagement & requirements (Lifecycle Update PRD) ------------------------
+
+/// The parent record between proposal selection and the final Agreement.
+/// Selecting a proposal creates exactly one Engagement for that quotation; it
+/// owns discovery discussion and the versioned requirements brief (BRD). The
+/// Agreement is created only from an approved BRD version plus the SOW.
+model Engagement {
+  id                         String             @id @default(cuid())
+  briefId                    String
+  quotationId                String             @unique
+  clientId                   String
+  freelancerId               String
+  status                     EngagementStatus   @default(DISCOVERY)
+  discoveryType              DiscoveryTermsType @default(UNPAID)
+  discoveryFee               Decimal?
+  discoveryDays              Int?
+  discoveryNotes             String?
+  currentRequirementsVersion Int                @default(0)
+  agreementId                String?            @unique
+  selectedAt                 DateTime           @default(now())
+  cancelledAt                DateTime?
+  cancelReason               String?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+
+  brief                 Brief                  @relation(fields: [briefId], references: [id])
+  quotation             Quotation              @relation(fields: [quotationId], references: [id])
+  client                User                   @relation("EngagementClient", fields: [clientId], references: [id])
+  freelancer            User                   @relation("EngagementFreelancer", fields: [freelancerId], references: [id])
+  agreement             Agreement?             @relation(fields: [agreementId], references: [id])
+  messages              EngagementMessage[]
+  requirementsVersions  RequirementsVersion[]
+  requirementsApprovals RequirementsApproval[]
+  requirementsComments  RequirementsComment[]
+
+  @@index([briefId, status])
+  @@index([clientId])
+  @@index([freelancerId])
+}
+
+/// Discovery discussion. It needs no Agreement, so none is created early.
+model EngagementMessage {
+  id           String   @id @default(cuid())
+  engagementId String
+  authorId     String
+  content      String
+  createdAt    DateTime @default(now())
+
+  engagement Engagement @relation(fields: [engagementId], references: [id])
+  author     User       @relation(fields: [authorId], references: [id])
+
+  @@index([engagementId, createdAt])
+}
+
+/// One immutable snapshot of the requirements brief. Editing never mutates a
+/// row: it creates the next version number, and the unique constraint guards
+/// the sequence at the database level, exactly like AgreementVersion.
+model RequirementsVersion {
+  id            String                    @id @default(cuid())
+  engagementId  String
+  versionNumber Int
+  content       Json // RequirementsContent: sections with stable IDs and source refs
+  authorId      String
+  authorRole    String // CLIENT | FREELANCER
+  status        RequirementsVersionStatus @default(IN_REVIEW)
+  // "llm" | "heuristic" when the saved text started from an AI draft, else "manual".
+  draftEngine   String                    @default("manual")
+  changeSummary String?
+  createdAt     DateTime                  @default(now())
+  approvedAt    DateTime?
+  supersededAt  DateTime?
+
+  engagement        Engagement             @relation(fields: [engagementId], references: [id])
+  author            User                   @relation(fields: [authorId], references: [id])
+  approvals         RequirementsApproval[]
+  comments          RequirementsComment[]
+  agreementVersions AgreementVersion[]
+
+  @@unique([engagementId, versionNumber])
+}
+
+/// One approval per party per exact version. Approving N never approves N+1.
+model RequirementsApproval {
+  id            String   @id @default(cuid())
+  engagementId  String
+  versionId     String
+  versionNumber Int
+  actorId       String
+  actorRole     String // CLIENT | FREELANCER
+  approvedAt    DateTime @default(now())
+
+  engagement Engagement          @relation(fields: [engagementId], references: [id])
+  version    RequirementsVersion @relation(fields: [versionId], references: [id])
+  actor      User                @relation(fields: [actorId], references: [id])
+
+  @@unique([versionId, actorRole])
+}
+
+/// Review comments anchored to a version and, optionally, one requirement ID.
+model RequirementsComment {
+  id            String    @id @default(cuid())
+  engagementId  String
+  versionId     String
+  requirementId String?
+  authorId      String
+  body          String
+  status        String    @default("OPEN") // OPEN | RESOLVED
+  resolvedById  String?
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  engagement Engagement          @relation(fields: [engagementId], references: [id])
+  version    RequirementsVersion @relation(fields: [versionId], references: [id])
+  author     User                @relation(fields: [authorId], references: [id])
+
+  @@index([versionId, createdAt])
 }

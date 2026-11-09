@@ -323,7 +323,7 @@ export function heuristicPricingRecommendation(input: HeuristicPricingInput): Pr
       pricingConfidence: "LOW",
       rationale:
         "Insufficient data: this Brief states no budget range and you have no previously submitted quotations on PactFlow. The figure shown is a neutral baseline for a single deliverable — set your own price.",
-      basis: "MARKET_BENCHMARK",
+      basis: "BASELINE_ESTIMATE",
       marketBenchmarkSource: BASELINE_RATE_CARD_SOURCE,
       insufficientData: true,
     };
@@ -386,7 +386,13 @@ export function heuristicScopeClassification(input: HeuristicScopeInput): ScopeC
 
   const matched = proposalTokens.filter((token) => scopeTokens.has(token));
   const coverage = matched.length / proposalTokens.length;
-  const matchedList = [...new Set(matched)].slice(0, 8).join(", ") || "none";
+  // Tokens are unbounded (a pasted hash or URL is one token), so each quoted
+  // term is clipped to keep the rationale inside the 1000-character UI window.
+  const matchedList =
+    [...new Set(matched)]
+      .slice(0, 8)
+      .map((token) => (token.length > 40 ? `${token.slice(0, 40)}…` : token))
+      .join(", ") || "none";
 
   if (coverage >= 0.6) {
     return {

@@ -2,6 +2,7 @@ import type {
   AgreementStatus,
   BriefStatus,
   DeliverableStatus,
+  EngagementStatus,
   InvitationStatus,
   MilestoneStatus,
   PaymentStatus,
@@ -44,6 +45,20 @@ export const AGREEMENT_TRANSITIONS: Record<AgreementStatus, AgreementStatus[]> =
   PENDING_APPROVAL: ["ACTIVE", "CANCELLED"],
   ACTIVE: ["PENDING_APPROVAL", "COMPLETED", "CANCELLED"],
   COMPLETED: [],
+  CANCELLED: [],
+};
+
+/**
+ * Lifecycle Update PRD section 8. Saving a new requirements version while one is
+ * under review keeps the Engagement in REQUIREMENTS (no transition); revising an
+ * approved baseline before the SOW is submitted moves it back to REQUIREMENTS.
+ * Once the SOW has produced an Agreement, that Agreement owns the state.
+ */
+export const ENGAGEMENT_TRANSITIONS: Record<EngagementStatus, EngagementStatus[]> = {
+  DISCOVERY: ["REQUIREMENTS", "CANCELLED"],
+  REQUIREMENTS: ["REQUIREMENTS_APPROVED", "CANCELLED"],
+  REQUIREMENTS_APPROVED: ["REQUIREMENTS", "AGREEMENT", "CANCELLED"],
+  AGREEMENT: [],
   CANCELLED: [],
 };
 
