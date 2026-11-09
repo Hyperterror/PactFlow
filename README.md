@@ -12,6 +12,10 @@ The platform exists because the three moments where freelance projects fall apar
 moments of ambiguity: what was agreed, what was delivered, and what was paid. PactFlow makes
 each of those a state the backend enforces, not a claim in a chat thread.
 
+> **Full product & technical guide:** [docs/GUIDE.md](docs/GUIDE.md) — every feature with the
+> files that implement it, how PayPal (Orders v2, webhooks, Payouts) and AI are used, the
+> sponsor technologies (AG Grid, Bryntum, Render), the API map, tests and the demo script.
+
 ---
 
 ## The three pillars
