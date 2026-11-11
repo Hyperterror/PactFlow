@@ -69,6 +69,93 @@ test.describe("registration and login", () => {
     await expect(page).toHaveURL(/\/register/);
   });
 
+  test("demo account selection fills credentials and keeps manual login available", async ({ page }) => {
+    await page.goto("/login");
+    const demoAccount = page.getByRole("combobox", { name: "Demo account" });
+    const email = page.locator("#email");
+    const password = page.locator("#password");
+
+    await expect(demoAccount).toHaveValue("");
+    await expect(email).toHaveValue("");
+    await expect(password).toHaveValue("");
+    await expect(demoAccount.getByRole("option")).toHaveText([
+      "Choose a demo account",
+      "Client — Northwind Studio",
+      "Freelancer — Ada Lovelace",
+      "Freelancer — Grace Hopper",
+    ]);
+
+    for (const account of [DEMO.client, DEMO.freelancer, DEMO.secondFreelancer]) {
+      await demoAccount.selectOption(account);
+      await expect(email).toHaveValue(account);
+      await expect(password).toHaveValue(DEMO_PASSWORD);
+      await expect(page).toHaveURL(/\/login$/);
+    }
+
+    await email.fill("manual@example.com");
+    await expect(demoAccount).toHaveValue("");
+    await demoAccount.selectOption(DEMO.client);
+    await password.fill("my-own-password");
+    await expect(demoAccount).toHaveValue("");
+
+    await demoAccount.selectOption(DEMO.client);
+    await demoAccount.selectOption("");
+    await expect(email).toHaveValue("");
+    await expect(password).toHaveValue("");
+  });
+
+  for (const account of [DEMO.client, DEMO.freelancer, DEMO.secondFreelancer]) {
+    test(`demo account ${account} signs in and honors the callback`, async ({ page }) => {
+      await page.goto("/login?callbackUrl=%2Fagreements");
+      await page.getByRole("combobox", { name: "Demo account" }).selectOption(account);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await page.waitForURL(/\/agreements$/);
+      await expect(page.getByRole("heading", { level: 1, name: "Agreements" })).toBeVisible();
+
+      const session = (await page.context().cookies()).find((cookie) => cookie.name.includes("session-token"));
+      expect(session).toBeDefined();
+    });
+  }
+
+  test("demo account selection clears a previous login error", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator("#email").fill(uniqueEmail("demo-error"));
+    await page.locator("#password").fill("wrong-password-123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByText("Those credentials are not valid.")).toBeVisible();
+
+    await page.getByRole("combobox", { name: "Demo account" }).selectOption(DEMO.client);
+    await expect(page.getByText("Those credentials are not valid.")).toHaveCount(0);
+    await expect(page.locator("#email")).toHaveValue(DEMO.client);
+    await expect(page.locator("#password")).toHaveValue(DEMO_PASSWORD);
+  });
+
+  test("demo account dropdown supports keyboard access and responsive themes", async ({ page }, testInfo) => {
+    await page.goto("/login");
+    const demoAccount = page.getByRole("combobox", { name: "Demo account" });
+    await demoAccount.focus();
+    await expect(demoAccount).toBeFocused();
+    await demoAccount.press("ArrowDown");
+    await expect(demoAccount).toHaveValue(DEMO.client);
+    await demoAccount.press("Tab");
+    await expect(page.locator("#email")).toBeFocused();
+
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ["light", "dark"]) {
+        await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+        await expect(demoAccount).toBeVisible();
+        await expect(page.getByRole("button", { name: "Sign in" })).toBeInViewport();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.screenshot({
+          path: testInfo.outputPath(`demo-login-${width}-${theme}.png`),
+          fullPage: true,
+          animations: "disabled",
+        });
+      }
+    }
+  });
+
   test("signs a seeded Client in with valid credentials", async ({ page }) => {
     await signIn(page, DEMO.client);
 

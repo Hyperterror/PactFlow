@@ -4,7 +4,15 @@ import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Alert, buttonClass, Field, inputClass } from "@/components/ui";
+import { Alert, buttonClass, Field, inputClass, selectClass } from "@/components/ui";
+
+// Public demo credentials from prisma/seed.ts, offered for hackathon judging.
+const DEMO_PASSWORD = "Password123!";
+const DEMO_ACCOUNTS = [
+  { email: "client@pactflow.dev", label: "Client — Northwind Studio" },
+  { email: "freelancer@pactflow.dev", label: "Freelancer — Ada Lovelace" },
+  { email: "grace@pactflow.dev", label: "Freelancer — Grace Hopper" },
+] as const;
 
 /**
  * Requirement 1.5 — the form never distinguishes "no such account" from "wrong
@@ -18,6 +26,16 @@ export function LoginForm({ callbackUrl, justReset = false }: { callbackUrl: str
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
+  const demoAccount = password === DEMO_PASSWORD
+    ? DEMO_ACCOUNTS.find((account) => account.email === email)?.email ?? ""
+    : "";
+
+  function selectDemoAccount(value: string) {
+    const account = DEMO_ACCOUNTS.find((account) => account.email === value);
+    setEmail(account?.email ?? "");
+    setPassword(account ? DEMO_PASSWORD : "");
+    setError(null);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,6 +82,33 @@ export function LoginForm({ callbackUrl, justReset = false }: { callbackUrl: str
           <Alert tone="success">Password updated. Sign in with your new password.</Alert>
         ) : null}
         {error ? <Alert tone="danger">{error}</Alert> : null}
+
+        <Field
+          label="Demo account"
+          htmlFor="demo-account"
+          className="border-b border-border-base pb-4"
+          hint={
+            <span id="demo-account-hint">
+              Judging PactFlow? Choose an account to fill in the credentials, then sign in.
+            </span>
+          }
+        >
+          <select
+            id="demo-account"
+            value={demoAccount}
+            onChange={(event) => selectDemoAccount(event.target.value)}
+            disabled={pending}
+            aria-describedby="demo-account-hint"
+            className={selectClass}
+          >
+            <option value="">Choose a demo account</option>
+            {DEMO_ACCOUNTS.map((account) => (
+              <option key={account.email} value={account.email}>
+                {account.label}
+              </option>
+            ))}
+          </select>
+        </Field>
 
         <Field label="Email" htmlFor="email" hint="For example: you@studio.com" required>
           <input
