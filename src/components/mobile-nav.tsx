@@ -61,7 +61,7 @@ export function MobileNav() {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-controls="mobile-nav-panel"
-        className="flex w-full items-center justify-between gap-2 rounded-lg bg-primary-foreground/10 px-3 py-2.5 text-sm font-medium text-primary-foreground"
+        className="flex w-full items-center justify-between gap-2 rounded-lg bg-inverse-foreground/10 px-3 py-2.5 text-sm font-medium text-inverse-foreground"
       >
         <span className="flex items-center gap-2">
           <svg
@@ -94,7 +94,7 @@ export function MobileNav() {
       {open ? (
         <ul
           id="mobile-nav-panel"
-          className="absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-lg border border-primary-foreground/15 bg-surface shadow-raised"
+          className="absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-lg border border-border-base bg-surface shadow-raised"
         >
           {LINKS.map((link) => {
             const isActive = link === active;

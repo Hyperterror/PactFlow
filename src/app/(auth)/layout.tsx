@@ -9,7 +9,7 @@ import { PactWordmark } from "@/components/pact-mark";
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_460px]">
-      <aside className="hidden flex-col justify-between bg-surface-inverse px-10 py-12 text-primary-foreground lg:flex">
+      <aside className="hidden flex-col justify-between bg-surface-inverse px-10 py-12 text-inverse-foreground lg:flex">
         <Link href="/" aria-label="PactFlow home">
           <PactWordmark tileClassName="bg-[#f2efe6] text-[#193c35]" />
         </Link>
@@ -19,11 +19,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             Scope creep, unpaid invoices and &ldquo;I thought that was included&rdquo; all come from the same gap: nobody
             wrote the boundary down.
           </p>
-          <p className="mt-4 max-w-sm text-sm leading-relaxed text-primary-foreground/60">
+          <p className="mt-4 max-w-sm text-sm leading-relaxed text-inverse-foreground/60">
             PactFlow writes it down, versions it, and refuses to release the file until the money has moved.
           </p>
         </div>
-        <p className="max-w-sm border-t border-primary-foreground/15 pt-4 text-xs leading-relaxed text-primary-foreground/45">
+        <p className="max-w-sm border-t border-inverse-foreground/15 pt-4 text-xs leading-relaxed text-inverse-foreground/45">
           AI prepares and recommends. You approve. The backend enforces every step.
         </p>
       </aside>

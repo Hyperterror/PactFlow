@@ -9,7 +9,7 @@ export function SignOutButton({ label = "Sign out" }: { label?: string }) {
       onClick={() => {
         void signOut({ callbackUrl: "/login" });
       }}
-      className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary-foreground/60 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground"
+      className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-inverse-foreground/60 transition-colors hover:bg-inverse-foreground/10 hover:text-inverse-foreground"
     >
       {label}
     </button>

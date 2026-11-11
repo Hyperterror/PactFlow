@@ -41,7 +41,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title="Switch appearance"
       className={
         className ??
-        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-primary-foreground/60 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground"
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-inverse-foreground/60 transition-colors hover:bg-inverse-foreground/10 hover:text-inverse-foreground"
       }
     >
       <svg

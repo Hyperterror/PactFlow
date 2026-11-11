@@ -108,7 +108,7 @@ export function CommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden items-center gap-2 rounded-lg border border-primary-foreground/15 px-2.5 py-1.5 text-xs font-medium text-primary-foreground/70 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground lg:flex"
+        className="hidden items-center gap-2 rounded-lg border border-inverse-foreground/15 px-2.5 py-1.5 text-xs font-medium text-inverse-foreground/70 transition-colors hover:bg-inverse-foreground/10 hover:text-inverse-foreground lg:flex"
         aria-label="Search briefs, agreements and milestones"
       >
         <svg
@@ -124,7 +124,7 @@ export function CommandPalette() {
           <path d="m20 20-3.5-3.5" />
         </svg>
         Search
-        <kbd className="rounded border border-primary-foreground/20 px-1 text-[10px] leading-4">⌘K</kbd>
+        <kbd className="rounded border border-inverse-foreground/20 px-1 text-[10px] leading-4">⌘K</kbd>
       </button>
 
       {open ? (

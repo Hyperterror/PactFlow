@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       >
         Skip to content
       </a>
-      <aside className="sticky top-0 z-30 flex flex-col gap-6 bg-surface-inverse px-4 py-5 text-primary-foreground lg:h-screen">
+      <aside className="sticky top-0 z-30 flex flex-col gap-6 bg-surface-inverse px-4 py-5 text-inverse-foreground lg:h-screen">
         <div className="flex items-center justify-between gap-2">
           <Link href="/briefs" aria-label="PactFlow home">
             <PactWordmark tileClassName="bg-[#f2efe6] text-[#193c35]" />
@@ -44,10 +44,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <NavLinks />
         </div>
 
-        <div className="hidden border-t border-primary-foreground/15 pt-4 lg:block">
+        <div className="hidden border-t border-inverse-foreground/15 pt-4 lg:block">
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold">{user.name || "Account"}</p>
-            <p className="truncate text-[11px] text-primary-foreground/55">{user.email}</p>
+            <p className="truncate text-[11px] text-inverse-foreground/55">{user.email}</p>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-1">
             <div className="flex items-center gap-0.5">

@@ -36,6 +36,8 @@
   --primary-hover: #12302a;
   --primary-soft: #e2eae3;
   --primary-foreground: #f7f5ef;
+  /* Text/icons on the always-dark forest rail; stays light in both themes. */
+  --inverse-foreground: #f7f5ef;
   --brass: #b58a5a;
   --brass-strong: #9a7346;
   --brass-soft: #f3ead9;
@@ -87,6 +89,7 @@
   --primary-hover: #a3ceba;
   --primary-soft: #24352f;
   --primary-foreground: #12201c;
+  --inverse-foreground: #ece9e1;
   --brass: #c9a274;
   --brass-strong: #d8b48a;
   --brass-soft: #33291d;
@@ -122,6 +125,7 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-foreground: var(--primary-foreground);
+  --color-inverse-foreground: var(--inverse-foreground);
   --color-brass: var(--brass);
   --color-brass-strong: var(--brass-strong);
   --color-brass-soft: var(--brass-soft);

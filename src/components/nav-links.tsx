@@ -40,8 +40,8 @@ export function NavLinks({ orientation = "vertical" }: { orientation?: "vertical
               "relative rounded-[7px] text-sm font-medium transition-colors",
               orientation === "vertical" ? "block py-2 pr-3 pl-3.5" : "whitespace-nowrap px-3 py-2",
               active
-                ? "bg-primary-foreground/15 text-primary-foreground"
-                : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground",
+                ? "bg-inverse-foreground/15 text-inverse-foreground"
+                : "text-inverse-foreground/70 hover:bg-inverse-foreground/10 hover:text-inverse-foreground",
             )}
           >
             {active && orientation === "vertical" ? (
