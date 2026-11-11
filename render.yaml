@@ -11,6 +11,10 @@
 # makes it survive restarts but disappear with a fresh disk.
 #
 # Persistent disks require a paid instance type; the free plan cannot mount one.
+# The `starter` plan below is therefore not optional. Render credits (Billing ->
+# Credit Balance) are deducted at the END of each billing period, so a payment
+# method is still requested when the service is created; the credit balance is
+# what keeps that card from being charged.
 services:
   - type: web
     name: pactflow
@@ -42,6 +46,9 @@ services:
       - key: PAYPAL_WEBHOOK_SECRET
         generateValue: true
       # Sandbox mode calls real PayPal APIs (Orders v2, Payouts, Webhook Verification).
+      # Until PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are filled in, the app logs a
+      # "[paypal] PAYPAL_MODE=sandbox but ... empty" warning and runs the local mock
+      # checkout — so an early deploy looks live without actually being live.
       - key: PAYPAL_MODE
         value: sandbox
       # Public URL of the service, e.g. https://pactflow.onrender.com. Prompted
@@ -59,6 +66,25 @@ services:
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      # REQUIRED in sandbox mode. Deliveries are verified ONLY through PayPal's
+      # verify-webhook-signature API against this id — there is no shared-secret
+      # fallback (PAYPAL_WEBHOOK_SECRET is mock-mode only), so leaving it unset
+      # rejects every real webhook and captures land solely through the return
+      # page. It is the id shown when the webhook is created in the PayPal
+      # dashboard, not the webhook URL.
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      # Percentage of each captured milestone the platform keeps before the
+      # Freelancer payout (0-50). Unset means 0, i.e. the Freelancer is paid in
+      # full and no platform fee shows in the demo.
+      - key: PLATFORM_FEE_PERCENT
+        sync: false
+      # Browser-side, so it is public by nature — but it stays out of source
+      # control all the same: `sync: false` makes Render prompt for it once and
+      # keep it in the dashboard only. NEXT_PUBLIC_* is inlined into the client
+      # bundle at BUILD time, so setting it after a deploy needs a rebuild.
+      - key: NEXT_PUBLIC_BRYNTUM_LICENSE_KEY
         sync: false
       # Optional: comma-separated operators allowed to read /api/audit and run cron.
       - key: OPERATOR_EMAILS
