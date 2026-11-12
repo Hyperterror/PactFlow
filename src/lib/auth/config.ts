@@ -52,7 +52,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       name: isHttpsDeployment() ? "__Secure-authjs.session-token" : "authjs.session-token",
       options: {
         httpOnly: true,
-        sameSite: "strict",
+        sameSite: "lax",
         path: "/",
         secure: isHttpsDeployment(),
       },
