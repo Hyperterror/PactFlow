@@ -55,9 +55,11 @@ export default async function DeliveryRoomPage({ params }: Params) {
             <Link href={`/agreements/${milestone.agreementId}`} className={buttonClass("secondary", "md")}>
               Agreement
             </Link>
-            <Link href={`/delivery/${milestoneId}/checkout`} className={buttonClass("ghost", "md")}>
-              Checkout
-            </Link>
+            {role === "CLIENT" ? (
+              <Link href={`/delivery/${milestoneId}/checkout`} className={buttonClass("ghost", "md")}>
+                Checkout
+              </Link>
+            ) : null}
           </div>
         }
       />

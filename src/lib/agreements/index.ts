@@ -89,6 +89,8 @@ export async function approveVersion(agreementId: string, actorId: string): Prom
       data: { status: "ACTIVE", startDate: agreement.startDate ?? new Date() },
     });
 
+    await ensureMilestonesForActiveAgreement(tx, agreementId);
+
     await writeAuditLog(tx, {
       eventType: "AGREEMENT_ACTIVATED",
       actorId,
@@ -112,6 +114,142 @@ export async function approveVersion(agreementId: string, actorId: string): Prom
 
     return active;
   });
+}
+
+/**
+ * Ensures that an ACTIVE agreement has milestones created.
+ * Derives milestones dynamically from the agreement's lineItems, deliverables, or total.
+ */
+export async function ensureMilestonesForActiveAgreement(tx: TxClient, agreementId: string): Promise<void> {
+  const agreement = await tx.agreement.findUnique({
+    where: { id: agreementId },
+    include: {
+      milestones: true,
+      versions: {
+        orderBy: { versionNumber: "desc" },
+        take: 1,
+      },
+    },
+  });
+  if (!agreement || agreement.status !== "ACTIVE" || agreement.milestones.length > 0) {
+    return;
+  }
+  const version = agreement.versions[0];
+  if (!version) return;
+
+  const content = (version.content ?? {}) as Record<string, unknown>;
+  const sow = typeof content.sow === "object" && content.sow !== null ? (content.sow as Record<string, unknown>) : null;
+
+  const rawLineItems = Array.isArray(content.lineItems)
+    ? content.lineItems
+    : sow && Array.isArray(sow.lineItems)
+      ? sow.lineItems
+      : [];
+
+  const lineItems: Array<{ description: string; price: number }> = rawLineItems
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      description: String(item.description || "Milestone").trim() || "Milestone",
+      price: Number(item.price) || 0,
+    }))
+    .filter((item) => item.price > 0);
+
+  const startDate = agreement.startDate ? new Date(agreement.startDate) : new Date();
+  const timelineDays =
+    typeof content.timelineDays === "number" && content.timelineDays > 0
+      ? content.timelineDays
+      : sow && typeof sow.timelineDays === "number" && sow.timelineDays > 0
+        ? sow.timelineDays
+        : 14;
+
+  interface MilestoneSeed {
+    name: string;
+    description: string;
+    paymentAmount: number;
+    dueDate: Date;
+  }
+
+  const seeds: MilestoneSeed[] = [];
+
+  if (lineItems.length > 0) {
+    const totalItems = lineItems.length;
+    lineItems.forEach((item, index) => {
+      const dayOffset = Math.max(1, Math.round(((index + 1) / totalItems) * timelineDays));
+      const dueDate = new Date(startDate.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+      seeds.push({
+        name: item.description.slice(0, 100),
+        description: item.description.slice(0, 1000),
+        paymentAmount: item.price,
+        dueDate,
+      });
+    });
+  } else {
+    const totalAmount =
+      typeof content.total === "number" && content.total > 0
+        ? content.total
+        : sow && typeof sow.total === "number" && sow.total > 0
+          ? sow.total
+          : typeof content.budgetMax === "number" && content.budgetMax > 0
+            ? content.budgetMax
+            : 500;
+
+    const rawDeliverables = Array.isArray(content.deliverables)
+      ? content.deliverables
+      : sow && Array.isArray(sow.deliverables)
+        ? sow.deliverables
+        : [];
+
+    if (rawDeliverables.length > 0) {
+      const splitAmount = Math.round((totalAmount / rawDeliverables.length) * 100) / 100;
+      rawDeliverables.forEach((del, idx) => {
+        const title =
+          typeof del === "string"
+            ? del
+            : typeof del === "object" && del !== null && "title" in del
+              ? String((del as Record<string, unknown>).title)
+              : `Deliverable ${idx + 1}`;
+        const dayOffset = Math.max(1, Math.round(((idx + 1) / rawDeliverables.length) * timelineDays));
+        const dueDate = new Date(startDate.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+        seeds.push({
+          name: title.slice(0, 100),
+          description: `Delivery for ${title}`.slice(0, 1000),
+          paymentAmount: splitAmount,
+          dueDate,
+        });
+      });
+    } else {
+      seeds.push({
+        name: "Final Delivery",
+        description: "Project completion and final deliverable.",
+        paymentAmount: totalAmount,
+        dueDate: new Date(startDate.getTime() + timelineDays * 24 * 60 * 60 * 1000),
+      });
+    }
+  }
+
+  for (const seed of seeds) {
+    const milestone = await tx.milestone.create({
+      data: {
+        agreementId: agreement.id,
+        agreementVersionId: version.id,
+        name: seed.name,
+        description: seed.description,
+        dueDate: seed.dueDate,
+        paymentAmount: seed.paymentAmount,
+        status: "PENDING",
+      },
+    });
+
+    await writeAuditLog(tx, {
+      eventType: "MILESTONE_CREATED",
+      actorId: agreement.clientId,
+      resourceId: milestone.id,
+      resourceType: "Milestone",
+      previousState: null,
+      newState: "PENDING",
+      metadata: { agreementId: agreement.id, paymentAmount: seed.paymentAmount, automated: true },
+    });
+  }
 }
 
 /**
@@ -231,6 +369,16 @@ export async function getVersionHistory(agreementId: string): Promise<AgreementV
 
 export async function getAgreementDetail(agreementId: string, viewerId: string) {
   const context = await assertAgreementParticipant(agreementId, viewerId);
+
+  if (context.agreement.status === "ACTIVE") {
+    const count = await prisma.milestone.count({ where: { agreementId } });
+    if (count === 0) {
+      await withTransaction(async (tx) => {
+        await ensureMilestonesForActiveAgreement(tx, agreementId);
+      });
+    }
+  }
+
   const [versions, approvals, milestones] = await Promise.all([
     getVersionHistory(agreementId),
     prisma.agreementApproval.findMany({ where: { agreementId }, orderBy: { versionNumber: "asc" } }),

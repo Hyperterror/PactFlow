@@ -6,7 +6,7 @@ import { withTransaction, writeAuditLog } from "@/lib/audit";
 import { MILESTONE_TRANSITIONS, assertTransition } from "@/lib/state";
 import { assertAgreementParticipant, recordAccessViolation } from "@/lib/access";
 import { send } from "@/lib/notifications";
-import { maybeCompleteAgreement } from "@/lib/agreements";
+import { maybeCompleteAgreement, ensureMilestonesForActiveAgreement } from "@/lib/agreements";
 import { ForbiddenError } from "@/lib/errors";
 
 export const CreateMilestoneSchema = z.object({
@@ -212,6 +212,23 @@ export async function listMilestones(agreementId: string): Promise<Milestone[]> 
  * agreement so the Delivery Room list reads as projects rather than a flat feed.
  */
 export async function listMilestonesForUser(userId: string) {
+  const activeWithoutMilestones = await prisma.agreement.findMany({
+    where: {
+      OR: [{ clientId: userId }, { freelancerId: userId }],
+      status: "ACTIVE",
+      milestones: { none: {} },
+    },
+    select: { id: true },
+  });
+
+  if (activeWithoutMilestones.length > 0) {
+    for (const ag of activeWithoutMilestones) {
+      await withTransaction(async (tx) => {
+        await ensureMilestonesForActiveAgreement(tx, ag.id);
+      });
+    }
+  }
+
   const agreements = await prisma.agreement.findMany({
     where: { OR: [{ clientId: userId }, { freelancerId: userId }] },
     orderBy: { createdAt: "desc" },
