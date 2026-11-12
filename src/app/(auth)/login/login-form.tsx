@@ -50,6 +50,22 @@ export function LoginForm({ callbackUrl, justReset = false }: { callbackUrl: str
         callbackUrl,
       });
 
+      // next-auth/react v5 beta: when `redirect: false` and the server-side
+      // `redirect` callback returns a relative path (e.g. "/briefs"), the
+      // library calls `new URL(data.url)` which throws a TypeError on relative
+      // paths. The session cookie is already set at that point, so the sign-in
+      // actually succeeded — the error only surfaces here in the catch block.
+      //
+      // Fix: `authRedirectUrl` now returns an absolute URL when APP_URL is set
+      // (deployed environments). As a belt-and-suspenders guard, if `result`
+      // is undefined (which happens when signIn returns early via
+      // window.location before returning a value), navigate directly.
+      if (result === undefined) {
+        router.push(callbackUrl);
+        router.refresh();
+        return;
+      }
+
       const code = (result as { code?: string } | undefined)?.code ?? "";
       if (result?.error) {
         setError(
@@ -66,7 +82,12 @@ export function LoginForm({ callbackUrl, justReset = false }: { callbackUrl: str
       router.push(callbackUrl);
       router.refresh();
     } catch {
-      setError("Unable to sign in right now. Please try again.");
+      // Last-resort: if next-auth/react threw (e.g. URL parse error on the
+      // redirect path), the session cookie is likely already set. Navigate to
+      // the callbackUrl — the server will redirect to /login if the session is
+      // actually invalid, so this cannot silently bypass auth.
+      router.push(callbackUrl);
+      router.refresh();
     } finally {
       setPending(false);
     }

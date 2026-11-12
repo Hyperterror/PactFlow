@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { authRedirectUrl } from "@/lib/auth/redirect";
 
 /**
@@ -6,8 +6,13 @@ import { authRedirectUrl } from "@/lib/auth/redirect";
  * Auth.js resolves its base URL to the internal bind address, so the default
  * redirect callback sent sign-out to `https://localhost:PORT/login`. The
  * callback must instead keep every target on the origin the browser is on.
+ *
+ * Also guards against next-auth/react v5 beta throwing `TypeError: Invalid URL`
+ * when `signIn({ redirect: false })` calls `new URL(data.url)` on a relative
+ * path: when APP_URL is set the function returns an absolute URL so the
+ * URL constructor in next-auth/react never sees a bare path.
  */
-describe("authRedirectUrl", () => {
+describe("authRedirectUrl — no APP_URL (local dev)", () => {
   it("keeps same-origin relative paths relative", () => {
     expect(authRedirectUrl("/login")).toBe("/login");
     expect(authRedirectUrl("/briefs")).toBe("/briefs");
@@ -34,5 +39,42 @@ describe("authRedirectUrl", () => {
     expect(authRedirectUrl("not-a-url")).toBe("/login");
     expect(authRedirectUrl("/briefs", "/fallback")).toBe("/briefs");
     expect(authRedirectUrl("garbage", "/fallback")).toBe("/fallback");
+  });
+});
+
+describe("authRedirectUrl — with APP_URL set (deployed env)", () => {
+  const ORIGIN = "https://pactflow-83ou.onrender.com";
+
+  beforeEach(() => {
+    process.env.APP_URL = ORIGIN;
+  });
+
+  afterEach(() => {
+    delete process.env.APP_URL;
+  });
+
+  it("returns an absolute URL for relative paths so next-auth/react new URL() does not throw", () => {
+    expect(authRedirectUrl("/login")).toBe(`${ORIGIN}/login`);
+    expect(authRedirectUrl("/briefs")).toBe(`${ORIGIN}/briefs`);
+    expect(authRedirectUrl("/delivery/abc?tab=files")).toBe(`${ORIGIN}/delivery/abc?tab=files`);
+  });
+
+  it("strips the internal bind address and returns an absolute URL on the public origin", () => {
+    expect(authRedirectUrl("https://localhost:10000/login")).toBe(`${ORIGIN}/login`);
+    expect(authRedirectUrl("http://localhost:3000/briefs")).toBe(`${ORIGIN}/briefs`);
+  });
+
+  it("strips a foreign absolute URL to path and re-roots on APP_URL origin", () => {
+    expect(authRedirectUrl("https://evil.example/phish")).toBe(`${ORIGIN}/phish`);
+  });
+
+  it("falls back to absolute sign-in URL for unparseable input", () => {
+    expect(authRedirectUrl("")).toBe(`${ORIGIN}/login`);
+    expect(authRedirectUrl("not-a-url")).toBe(`${ORIGIN}/login`);
+  });
+
+  it("strips trailing slash from APP_URL to avoid double-slash paths", () => {
+    process.env.APP_URL = `${ORIGIN}/`;
+    expect(authRedirectUrl("/briefs")).toBe(`${ORIGIN}/briefs`);
   });
 });
