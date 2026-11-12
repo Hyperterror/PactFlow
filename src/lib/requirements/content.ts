@@ -30,12 +30,30 @@ export const SOURCE_TYPES = [
 export type SourceType = (typeof SOURCE_TYPES)[number];
 export type PartyRole = "CLIENT" | "FREELANCER";
 
-export const SourceRefSchema = z.object({
-  type: z.enum(SOURCE_TYPES),
-  /** Field path (`brief.deliverables[0]`), message id, or party role. */
-  ref: z.string().trim().min(1).max(200),
-  excerpt: z.string().trim().max(300).optional(),
-});
+export const SourceRefSchema = z.preprocess(
+  (val) => {
+    if (typeof val === "string") {
+      return { type: "BRIEF_FIELD", ref: val };
+    }
+    if (val && typeof val === "object" && "type" in val && typeof (val as Record<string, unknown>).type === "string") {
+      const rawType = String((val as Record<string, unknown>).type).toUpperCase();
+      if ((SOURCE_TYPES as readonly string[]).includes(rawType)) {
+        return { ...(val as Record<string, unknown>), type: rawType };
+      }
+      if (rawType.includes("BRIEF")) return { ...(val as Record<string, unknown>), type: "BRIEF_FIELD" };
+      if (rawType.includes("PROP")) return { ...(val as Record<string, unknown>), type: "PROPOSAL_FIELD" };
+      if (rawType.includes("MESS") || rawType.includes("DISC")) return { ...(val as Record<string, unknown>), type: "DISCOVERY_MESSAGE" };
+      return { ...(val as Record<string, unknown>), type: "PARTY_AUTHORED" };
+    }
+    return val;
+  },
+  z.object({
+    type: z.enum(SOURCE_TYPES),
+    /** Field path (`brief.deliverables[0]`), message id, or party role. */
+    ref: z.string().trim().min(1).max(200),
+    excerpt: z.string().trim().max(300).optional(),
+  }),
+);
 export type SourceRef = z.infer<typeof SourceRefSchema>;
 
 export const PRIORITIES = ["MUST", "SHOULD", "COULD"] as const;
