@@ -90,16 +90,6 @@ export async function callLLMWithTimeout<T>(options: LLMCallOptions<T>): Promise
     }
     return parsed.data;
   } catch (error) {
-    console.error(`[ai] ${label} remote LLM call failed:`, error instanceof Error ? error.message : error);
-    try {
-      const fallbackValue = localFallback();
-      const parsed = schema.safeParse(fallbackValue);
-      if (parsed.success) {
-        return parsed.data;
-      }
-    } catch {
-      // Fallback failed, continue to throw original error
-    }
     if (error instanceof Error && error.name === "AbortError") {
       throw new AITimeoutError(label, timeoutMs);
     }
