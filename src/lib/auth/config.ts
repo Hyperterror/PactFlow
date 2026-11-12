@@ -11,6 +11,7 @@ import {
   recordLoginSuccess,
 } from "@/lib/auth/rate-limit";
 import { isHttpsDeployment } from "@/lib/auth/session-token";
+import { authRedirectUrl } from "@/lib/auth/redirect";
 
 const CredentialsSchema = z.object({
   email: z.string().trim().min(1).max(254),
@@ -26,6 +27,17 @@ class InvalidCredentials extends CredentialsSignin {
 
 class AccountLocked extends CredentialsSignin {
   code = "account_locked";
+}
+
+// Auth.js resolves its base URL from AUTH_URL/NEXTAUTH_URL, falling back to the
+// request host. Behind Render's proxy that host is the internal bind address,
+// so promote the documented public APP_URL to AUTH_URL when it is an explicit
+// HTTPS origin. This keeps the callback-url cookie and CSRF origin canonical on
+// a configured deploy; the `redirect` callback below covers deploys where
+// APP_URL is left blank.
+const publicAppUrl = process.env.APP_URL ?? "";
+if (!process.env.AUTH_URL && !process.env.NEXTAUTH_URL && publicAppUrl.startsWith("https://")) {
+  process.env.AUTH_URL = publicAppUrl;
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -87,6 +99,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // Keep auth redirects on the origin the browser is actually on, never the
+    // internal `localhost:PORT` base URL detected behind Render's proxy.
+    async redirect({ url }) {
+      return authRedirectUrl(url);
+    },
     async jwt({ token, user, trigger }) {
       if (user) {
         token.uid = user.id;
